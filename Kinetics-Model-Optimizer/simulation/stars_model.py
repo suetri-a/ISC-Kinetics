@@ -205,14 +205,14 @@ class STARSModel(KineticCellBase):
         reaction_list = self.get_stars_reaction_list()
 
         stars_components = stars.get_component_dict(self.comp_names, self.base_model)
-        component_list = []
+        component_dict = {}
         for i, name in enumerate(self.comp_names):
             comp_temp = stars_components[name]
             comp_temp.CMM = [self.material_dict['M'][i]]
-            component_list.append()
+            component_dict[name] = comp_temp
 
         filename = 'stars_runfile'
-        stars.create_stars_runfile(filename, self.base_model, component_list, reaction_list, heating_rate)
+        stars.create_stars_runfile(filename, self.base_model, component_dict, reaction_list, heating_rate)
         stars.run_stars_runfile(filename, self.exe_path, self.cd_path)
         t, ydict = stars.read_stars_output(filename, self.base_model)
         spec_names_temp = self.comp_names + 'Temp'
@@ -224,7 +224,7 @@ class STARSModel(KineticCellBase):
     def get_stars_reaction_list(self):
         reaction_list = []
         for i in range(self.num_rxns):
-            reaction_list.append(stars.Reaction(NAME="RXN"+str(i),STOREAC=self.reac_coeff[i,:].tolist(),
+            reaction_list.append(stars.Reaction(NAME="RXN"+str(i+1),STOREAC=self.reac_coeff[i,:].tolist(),
                                     STOPROD=self.prod_coeff[i,:].tolist(),
                                     RORDER=self.reac_order[i,:].tolist(),
                                     FREQFAC=self.pre_exp_fwd[i], EACT=self.act_eng_fwd[i],
@@ -232,6 +232,15 @@ class STARSModel(KineticCellBase):
                                     )
         return reaction_list
 
+
+    def clone_from_data(self, data_cell):
+        # Clone general information
+        self.O2_con = data_cell.O2_con
+        self.heating_rates = data_cell.heating_rates
+        self.num_heats = len(self.heating_rates)
+        self.time_line = data_cell.time_line # times are loaded as dict with hr as key
+        self.max_temp = data_cell.max_temp
+    
 
     ###############################################################
     ##### PARAMETER MAPPING FUNCTIONS #####
@@ -271,7 +280,7 @@ class STARSModel(KineticCellBase):
         for i, name in enumerate(self.comp_names):
             if name in self.pseudo_fuel_comps:
                 for b in self.balances:
-                    self.balance_dict[B][i] = np.nan
+                    self.balance_dict[b][i] = np.nan
 
 
     # Map parameters (besides coeff's) into reaction
@@ -531,6 +540,5 @@ class STARSModel(KineticCellBase):
 
         for i in range(self.num_rxns):
             res.append(np.sum((A.dot(self.reac_coeff[i,:].T - self.prod_coeff[i,:].T))**2))
-        res = np.asarray(res)
 
         return res

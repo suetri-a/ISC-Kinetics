@@ -1,8 +1,8 @@
 # Utilities for interfacing with CMG-STARS
 
 import os
-import CMG_Python as stars
-from CMG_Python import Component, Reaction
+from . import CMG_Python as cmg
+from .CMG_Python import *
 import numpy as np
 
 BASE_MODEL_DICT = {'CINAR': 1, 'KRISTENSEN': 2, 'CHEN': 3}
@@ -95,17 +95,17 @@ def create_stars_runfile(filename, base_model, components, kinetics, heating_rat
     fluid_option = BASE_MODEL_DICT[base_model]
 
     fileID = open(filename, 'a')
-    stars.print_IO_control(fileID, fluid_option)
-    stars.print_grid(fileID, fluid_option)
-    stars.print_fluid(fileID, fluid_option, components, kinetics)
-    stars.K_value_table(fluid_option, fileID)
-    stars.print_ref_cond(fileID, fluid_option)
-    stars.print_rock_fluid(fileID, fluid_option)
-    stars.print_initial_cond(fileID, fluid_option)
-    stars.print_numerical(fileID, fluid_option)
-    stars.print_recurrent(fileID, fluid_option)
-    stars.print_heater(fileID, fluid_option)
-    stars.print_heating_rate(fileID, heating_rate, fluid_option)
+    cmg.print_IO_control(fileID, fluid_option)
+    cmg.print_grid(fileID, fluid_option)
+    cmg.print_fluid(fileID, fluid_option, components, kinetics)
+    cmg.K_value_table(fluid_option, fileID)
+    cmg.print_ref_cond(fileID, fluid_option)
+    cmg.print_rock_fluid(fileID, fluid_option)
+    cmg.print_initial_cond(fileID, fluid_option)
+    cmg.print_numerical(fileID, fluid_option)
+    cmg.print_recurrent(fileID, fluid_option)
+    cmg.print_heater(fileID, fluid_option)
+    cmg.print_heating_rate(fileID, heating_rate, fluid_option)
     fileID.close()
 
 
@@ -296,7 +296,7 @@ def read_stars_output(filename, base_model):
         CO2_PROD = SPEC_VALS[10,:]
         lin_HR = TEMP_VALS[8,:]
 
-    ydict = {'O2': O2_PROD, 'N2': N2_PROD, 'H2O': H2O_PROD, 'CO': CO_PROD, 'CO2': CO2_PROD, 'Temp': lin_HR])
+    ydict = {'O2': O2_PROD, 'N2': N2_PROD, 'H2O': H2O_PROD, 'CO': CO_PROD, 'CO2': CO2_PROD, 'Temp': lin_HR}
 
     return t, ydict
     

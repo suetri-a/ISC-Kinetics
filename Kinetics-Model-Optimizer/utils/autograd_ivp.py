@@ -27,17 +27,17 @@ def grad_solve_ivp(yt, func, y0, t, func_args, **kwargs):
     T, D = np.shape(yt)
     flat_args, unflatten = flatten(func_args)
     
-    def flat_func(y, t, flat_args):
-        return func(y, t, *unflatten(flat_args))
+    def flat_func(t, y, flat_args):
+        return func(t, y, *unflatten(flat_args))
 
     def unpack(x):
         #      y,      vjp_y,      vjp_t,    vjp_args
         return x[0:D], x[D:2 * D], x[2 * D], x[2 * D + 1:]
 
-    def augmented_dynamics(augmented_state, t, flat_args):
+    def augmented_dynamics(t, augmented_state, flat_args):
         # Orginal system augmented with vjp_y, vjp_t and vjp_args.
         y, vjp_y, _, _ = unpack(augmented_state)
-        vjp_all, dy_dt = make_vjp(flat_func, argnum=(0, 1, 2))(y, t, flat_args)
+        vjp_all, dy_dt = make_vjp(flat_func, argnum=(0, 1, 2))(t, y, flat_args)
         vjp_y, vjp_t, vjp_args = vjp_all(-vjp_y)
         return np.hstack((dy_dt, vjp_y, vjp_t, vjp_args))
 
@@ -51,14 +51,14 @@ def grad_solve_ivp(yt, func, y0, t, func_args, **kwargs):
         for i in range(T - 1, 0, -1):
 
             # Compute effect of moving measurement time.
-            vjp_cur_t = np.dot(func(yt[i, :], t[i], *func_args), g[i, :])
+            vjp_cur_t = np.dot(func(t[i], yt[i, :], *func_args), g[i, :])
             time_vjp_list.append(vjp_cur_t)
             vjp_t0 = vjp_t0 - vjp_cur_t
 
             # Run augmented system backwards to the previous observation.
             aug_y0 = np.hstack((yt[i, :], vjp_y, vjp_t0, vjp_args))
-            aug_ans = solve_ivp(augmented_dynamics, aug_y0,
-                             np.array([t[i], t[i - 1]]), tuple((flat_args,)), **kwargs)
+            aug_ans = solve_ivp(augmented_dynamics, aug_y0, np.array([t[i], t[i - 1]]),
+                            tuple((flat_args,)))
             _, vjp_y, vjp_t0, vjp_args = unpack(aug_ans[1])
 
             # Add gradient from current output.

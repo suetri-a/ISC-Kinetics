@@ -6,7 +6,7 @@ from .kinetic_cell_base import KineticCellBase
 
 def cell_from_name(model_name):
 
-    model_filename = "kinetics." + model_name + "_model"
+    model_filename = "simulation." + model_name + "_model"
     modellib = importlib.import_module(model_filename)
     
     kinetic_cell = None
@@ -31,16 +31,11 @@ def create_kinetic_cell(opts):
     return kinetic_cell
 
 
-def create_data_cell(opts):
-    model = cell_from_name('data')
-    kinetic_cell = model(opts)
-
-    print("model [%s] was created" % type(kinetic_cell).__name__)
-
-    return kinetic_cell
-
-
 def get_option_setter(cell_name):
     kinetic_cell = cell_from_name(cell_name)
     return kinetic_cell.modify_cmd_options
 
+
+def clone_from_kinetic_cell(target_cell, clone_cell):
+
+    pass

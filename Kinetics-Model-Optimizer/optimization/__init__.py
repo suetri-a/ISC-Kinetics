@@ -7,7 +7,7 @@ from .base_optimizer import BaseOptimizer
 
 def optimizer_from_name(optim_name):
 
-    optimizer_filename = "optim." + optim_name + "_optimizer"
+    optimizer_filename = "optimization." + optim_name + "_optimizer"
     optimlib = importlib.import_module(optimizer_filename)
     
     optimizer = None
@@ -23,9 +23,9 @@ def optimizer_from_name(optim_name):
     return optimizer
 
 
-def create_optimizer(opts):
+def create_optimizer(kinetic_cell, data_cell, opts):
     optimizer_type = optimizer_from_name(opts.optimizer_type)
-    optim = optimizer_type(opts)
+    optim = optimizer_type(kinetic_cell, data_cell, opts)
 
     print("optimizer [%s] was created" % type(optim).__name__)
     

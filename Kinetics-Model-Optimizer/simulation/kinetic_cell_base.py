@@ -24,6 +24,7 @@ class KineticCellBase(ABC):
     def __init__(self, opts):
 
         self.opts = opts
+        self.isOptimization = opts.isOptimization
 
         #### Initialize save folders
         self.results_dir = os.path.join(opts.results_dir, opts.name,'')
@@ -54,34 +55,53 @@ class KineticCellBase(ABC):
         self.num_rxns, self.num_comp = len(self.reac_names), len(self.comp_names)
         self.rxn_constraints, self.init_coeff = opts.rxn_constraints, opts.init_coeff
 
-        self.fuel_inds = []
-        for reacs in opts.reac_names:
-                self.fuel_inds.append([self.comp_names.index(r) for r in reacs if r in opts.fuel_comps][0])
-        self.fuel_names = opts.fuel_comps
-        self.pseudo_fuel_comps = opts.pseudo_fuel_comps
-        
-        self.heating_rates = opts.heating_rates # Change to be in C/sec
-        self.num_heats = len(self.heating_rates) # stored for convenience
-        self.Tspan = opts.Tspan
-        
-        self.material_dict = self.opts.material_dict
-        self.balances = self.opts.balances
+        self.material_dict = opts.material_dict
+        self.balances = opts.balances
         self.balance_dict = {}
         for b in self.balances:
             self.balance_dict[b] = np.array([self.material_dict[b][c] for c in self.comp_names])
 
-        # Initialize initial conditions
-        self.IC = []
-        for i in range(self.num_heats):
-            IC_temp = []
-            for spec in self.comp_names:
-                if spec == 'O2' and opts.IC_dict[spec] == None:
-                    IC_temp.append(self.O2_con_sim)
-                else:
-                    IC_temp.append(opts.IC_dict[spec])
-            IC_temp.append(opts.T0)
-            self.IC.append(np.array(IC_temp))
-        
+        self.fuel_names = opts.fuel_comps
+        self.pseudo_fuel_comps = opts.pseudo_fuel_comps
+        self.fuel_inds = [self.comp_names.index[r] for r in opts.reac_names if r in opts.fuel_comps or r in opts.pseudo_fuel_comps]
+
+        # Optimization-related information
+        if opts.isOptimization:
+            self.IC = None
+            self.heating_rates = None
+            self.num_heats = None
+            self.time_line = None
+            self.O2_con = None
+
+            # Parameter bounds dictionary
+            self.lb = {'reaccoeff': opts.stoic_coeff_lower, 'prodcoeff': opts.stoic_coeff_lower, 
+                        'reacorder': opts.rxn_order_lower, 'prodorder': opts.rxn_order_lower,
+                        'preexpfwd': opts.pre_exp_lower, 'preexprev': opts.pre_exp_lower,
+                        'actengfwd': opts.act_eng_lower, 'actengrev': opts.act_eng_lower, 
+                        'balance-M': 0, 'balance-O': 0, 'balance-C': 0}
+            self.ub = {'reaccoeff': opts.stoic_coeff_upper, 'prodcoeff': opts.stoic_coeff_upper, 
+                        'reacorder': opts.rxn_order_upper, 'prodorder': opts.rxn_order_upper,
+                        'preexpfwd': opts.pre_exp_upper, 'preexprev': opts.pre_exp_upper,
+                        'actengfwd': opts.act_eng_upper, 'actengrev': opts.act_eng_upper, 
+                        'balance-M': np.inf, 'balance-O': np.inf, 'balance-C': np.inf}
+            
+        else:
+            self.max_temp = opts.max_temp
+            self.heating_rates = [h/60 for h in opts.heating_rates] # convert HR to /min
+            self.num_heats = len(self.heating_rates)
+            self.Tspan = opts.Tspan
+            self.time_line = np.linspace(60*opts.Tspan[0], 60*opts.Tspan[1], num=opts.num_sim_steps)
+
+            self.IC = [] 
+            for _ in range(self.num_heats):
+                IC_temp = []
+                for spec in self.comp_names:
+                    if spec == 'O2' and opts.IC_dict[spec] == None:
+                        IC_temp.append(self.O2_con_sim)
+                    else:
+                        IC_temp.append(opts.IC_dict[spec])
+                IC_temp.append(opts.T0)
+                self.IC.append(np.array(IC_temp))
     
 
     ###########################################################
@@ -134,21 +154,31 @@ class KineticCellBase(ABC):
 
         pass
 
+    
+    @abstractmethod
+    def clone_from_data(self, data_cell):
+        pass
+
+
+    @abstractmethod
+    def compute_residuals(self, x):
+        pass
 
 
     ###########################################################
     #### END REQUIRED METHODS
     ###########################################################
-
-
-
-    def run_RTO_experiments(self):
+    
+    def run_RTO_experiments(self, params, return_vals = False):
         '''
         Short wrapper to run the heating rates
         '''
         self.y = []
         for i, h in enumerate(self.heating_rates):
-            self.y.append(self.run_RTO_experiment(self.params, h, self.IC[i]))
+            self.y.append(self.run_RTO_experiment(params, h, self.IC[i]))
+
+        if return_vals:
+            return self.y
 
 
     def get_O2_consumption(self, x):
@@ -162,17 +192,14 @@ class KineticCellBase(ABC):
             O2_consumption = [#Heating rates, #Time steps] array of O2 consumption curves
 
         '''
-        
-        if x != self.params: # Check if simulations need to be re-run
-            self.params = x
-            self.map_params()
-            
-            self.y = []
 
-            for i, hr in enumerate(self.heating_rates):
-                self.y.append(self.run_RTO_experiment(hr, self.ICs[i]))
-            
-            self.O2_consumption = np.stack([y[self.O2_ind,:] for y in self.y])
+        if self.isOptimization:
+            y_temp = self.run_RTO_experiments(x, return_vals=True)
+            self.O2_consumption = np.stack([self.O2_con[hr] - y_temp[i][self.O2_ind,:] for i, hr in enumerate(self.heating_rates)])
+        
+        else:
+            self.run_RTO_experiments(x)
+            self.O2_consumption = self.O2_con_sim - np.stack([y[self.O2_ind,:] for y in self.y])
             self.Temperature = np.stack([y[-1,:] for y in self.y])
         
         return self.O2_consumption
@@ -183,6 +210,7 @@ class KineticCellBase(ABC):
         Assign stoichiometric and reaction order matrices based on input data
 
         '''
+
         size_tup = (self.num_rxns, self.num_comp)
         reac_coeff, prod_coeff = np.zeros(size_tup), np.zeros(size_tup) 
         reac_order, prod_order = np.zeros(size_tup), np.zeros(size_tup) 

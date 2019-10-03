@@ -6,11 +6,13 @@ class BaseData(ABC):
 
     @staticmethod
     def modify_cmd_options(parser):
-        parser.add_argument('--data_dir', type=str, default='data/', help='location of experimental data')
+        parser.add_argument('--dataset_dir', type=str, default='datasets/', help='location of experimental data')
         return parser
 
 
     def __init__(self, opts):
+        # Load data
+        self.dataset_dir = opts.data_dir + opts.dataset + '/'
         self.data_load(opts)
 
 
@@ -25,7 +27,7 @@ class BaseData(ABC):
 
 
     @abstractmethod
-    def get_T_data(self):
+    def get_T_data(self, heating_rate):
         '''
         Return temperature data from 
 

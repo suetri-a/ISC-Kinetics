@@ -30,17 +30,15 @@ class BaseOptimizer():
         return parser
 
 
-    def __init__(self, kinetic_cell, kc_ground_truth, opts):
+    def __init__(self, kinetic_cell, data_cell, opts):
         
-        self.opts = opts
+        self.autodiff_enable = opts.autodiff_enable
+        self.data_cell = data_cell
         self.kinetic_cell = kinetic_cell
-        self.kc_ground_truth = kc_ground_truth
-        lb, ub = kinetic_cell.reaction.get_bounds()
-        self.bnds = [(lb[i], ub[i]) for i in range(len(lb))]
-        self.base_cost = self.get_base_cost_fun(kinetic_cell, kc_ground_truth, opts)
+        self.base_cost = self.get_base_cost_fun(kinetic_cell, data_cell, opts)
 
 
-    def get_base_cost_fun(self, kinetic_cell, kc_ground_truth, opts):
+    def get_base_cost_fun(self, kinetic_cell, data_cell, opts):
         '''
         Generate log-likelihood cost function for the optimization
         '''
@@ -51,14 +49,14 @@ class BaseOptimizer():
         if opts.param_prior not in ['uniform']:
             raise Exception('Autodiff optimizer not support for non-uniform parameter prior.')
 
-        O2_data = kc_ground_truth.consumption_O2
+        O2_data = data_cell.get_O2_data()
         
 
         def base_fun(x):   
             if opts.param_prior == 'uniform':
                 param_cost = 0
             
-            O2_sim = kinetic_cell.O2_from_params(x)
+            O2_sim = kinetic_cell.get_O2_consumption(x)
 
             if opts.output_prior in ['ISO_peak', 'O2_peak']:
 
@@ -66,63 +64,65 @@ class BaseOptimizer():
                     '''
                     Calculate cost function for isoconversional cost.
                     '''
-                    activation_energy = kinetic_cell.acteng_from_params(x)
-                    activation_energy[np.isnan(activation_energy)] = 0
-                    diff_v = np.real(activation_energy)-np.real(activation_energy)
-                    diff_v = diff_v[np.where(np.isnan(diff_v)!=1 and np.isinf(diff_v)!=1)]
-                    data_cost = np.sum(diff_v**2)
+                    pass 
+                    # activation_energy = kinetic_cell.acteng_from_params(x)
+                    # activation_energy[np.isnan(activation_energy)] = 0
+                    # diff_v = np.real(activation_energy)-np.real(activation_energy)
+                    # diff_v = diff_v[np.where(np.isnan(diff_v)!=1 and np.isinf(diff_v)!=1)]
+                    # data_cost = np.sum(diff_v**2)
                 
                 elif opts.output_prior == 'O2_peak':
+                    pass
 
-                    def find_peak_info(O2_consumption):
-                        '''
-                        Find O2 consumption peaks for ground truth data
-                        '''
+                    # def find_peak_info(O2_consumption):
+                    #     '''
+                    #     Find O2 consumption peaks for ground truth data
+                    #     '''
                 
-                        # Initialize lists for peak time/values
-                        peak_ind, peak_val = [], [] # simulation peak times and values
-                        if peak_widths is None:
-                            peak_widths = np.arange(np.round(kinetic_cell.time_line.shape[0]/50), 
-                                np.round(kinetic_cell.time_line.shape[0]/20), 10)
+                    #     # Initialize lists for peak time/values
+                    #     peak_ind, peak_val = [], [] # simulation peak times and values
+                    #     if peak_widths is None:
+                    #         peak_widths = np.arange(np.round(kinetic_cell.time_line.shape[0]/50), 
+                    #             np.round(kinetic_cell.time_line.shape[0]/20), 10)
                         
-                        for i in range(kinetic_cell.num_heats):                
-                            # Find consumption peaks
-                            peak_inds = find_peaks_cwt(O2_consumption[:,i], peak_widths)
+                    #     for i in range(kinetic_cell.num_heats):                
+                    #         # Find consumption peaks
+                    #         peak_inds = find_peaks_cwt(O2_consumption[:,i], peak_widths)
                 
-                            if peak_inds.shape[0] < opts.num_peaks[i]:
-                                peak_inds = peak_inds[0]*np.ones((opts.num_peaks[i],1))
-                            else:
-                                peak_inds = peak_inds[:opts.num_peaks[i]]
+                    #         if peak_inds.shape[0] < opts.num_peaks[i]:
+                    #             peak_inds = peak_inds[0]*np.ones((opts.num_peaks[i],1))
+                    #         else:
+                    #             peak_inds = peak_inds[:opts.num_peaks[i]]
                             
-                            peak_ind.append(peak_inds.astype(int))
-                            peak_val.append(O2_consumption[peak_inds.astype(int)])
+                    #         peak_ind.append(peak_inds.astype(int))
+                    #         peak_val.append(O2_consumption[peak_inds.astype(int)])
                             
-                        return peak_ind, peak_val
+                    #     return peak_ind, peak_val
                 
                 
-                    def find_start_end_info(O2_consumption):
-                        '''
-                        Find start and end times of a combustion reaction sequence.
-                        '''
-                        start_inds = list(np.amin(np.where(O2_consumption >= opts.reac_tol), axis=0))
-                        end_inds = list(np.amax(np.where(O2_consumption >= opts.reac_tol), axis=0))
-                        return start_inds, end_inds
+                    # def find_start_end_info(O2_consumption):
+                    #     '''
+                    #     Find start and end times of a combustion reaction sequence.
+                    #     '''
+                    #     start_inds = list(np.amin(np.where(O2_consumption >= opts.reac_tol), axis=0))
+                    #     end_inds = list(np.amax(np.where(O2_consumption >= opts.reac_tol), axis=0))
+                    #     return start_inds, end_inds
                     
-                    # Calculate cost function for O2 consumption.
-                    peak_ind_sim, peak_val_sim = find_peak_info(O2_sim)
-                    peak_ind_gt, peak_val_gt = find_peak_info(O2_data)
+                    # # Calculate cost function for O2 consumption.
+                    # peak_ind_sim, peak_val_sim = find_peak_info(O2_sim)
+                    # peak_ind_gt, peak_val_gt = find_peak_info(O2_data)
                     
-                    start_ind_sim, end_ind_sim = find_start_end_info(O2_sim)
-                    start_ind_gt, end_ind_gt = find_start_end_info(O2_data)
+                    # start_ind_sim, end_ind_sim = find_start_end_info(O2_sim)
+                    # start_ind_gt, end_ind_gt = find_start_end_info(O2_data)
             
-                    # Calculate distance cost function
-                    data_cost = opts.peak_weight_vec[0]*np.sum(((peak_ind_gt - peak_ind_sim) / opts.num_sim_steps)**2) + \
-                        opts.peak_weight_vec[1]*np.sum(((peak_val_gt - peak_val_sim) / (opts.O2_con_sim-peak_val_gt))**2) + \
-                        opts.peak_weight_vec[2]*np.sum(((start_ind_sim - start_ind_gt) / opts.num_sim_steps)**2) + \
-                        opts.peak_weight_vec[3]*np.sum(((end_ind_sim - end_ind_gt) / opts.num_sim_steps)**2)
+                    # # Calculate distance cost function
+                    # data_cost = opts.peak_weight_vec[0]*np.sum(((peak_ind_gt - peak_ind_sim) / opts.num_sim_steps)**2) + \
+                    #     opts.peak_weight_vec[1]*np.sum(((peak_val_gt - peak_val_sim) / (opts.O2_con_sim-peak_val_gt))**2) + \
+                    #     opts.peak_weight_vec[2]*np.sum(((start_ind_sim - start_ind_gt) / opts.num_sim_steps)**2) + \
+                    #     opts.peak_weight_vec[3]*np.sum(((end_ind_sim - end_ind_gt) / opts.num_sim_steps)**2)
             
             elif opts.output_prior == 'gaussian':
-                data_cost = np.mean((O2_sim - O2_data)**2)
+                data_cost = np.mean(np.power(O2_sim - O2_data, 2))
             
             elif opts.output_prior == 'exponential':
                 data_cost = np.mean(np.abs(O2_sim - O2_data))

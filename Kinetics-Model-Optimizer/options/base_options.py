@@ -1,7 +1,8 @@
 import argparse
 import os
-import kinetics
-import optim
+import simulation
+import optimization
+import data
 
 from utils import utils
 from . import get_predefined_rxn, get_component_props
@@ -23,8 +24,7 @@ class KineticCellOptions():
         # Basic parameters
         parser.add_argument('--name', type=str, default='vkc_example', help='name of the numerical experiment')
         parser.add_argument('--results_dir', type=str, default='results', help='folder to contain results from the optimization')
-        parser.add_argument('--dataset_dir', type=str, default='data', help='folder where data is stored')
-        parser.add_argument('--dataset_name', type=str, default='synthetic1', help='name of dataset to use in workflow')
+        parser.add_argument('--isOptimization', type=eval, default=False, help='set if optimizing or simulating')
 
         # Kinetic cell parameters
         parser.add_argument('--R', type=float, default=8.314, help='universal gas constant')
@@ -40,6 +40,11 @@ class KineticCellOptions():
         parser.add_argument('--fuel_comps', type=str, default=None, help='fuel components')
         parser.add_argument('--combustion_prods', type=str, default=None, help='components produced from combustion')
         parser.add_argument('--IC_dict', type=str, default=None, help='dictionary of initial conditions')
+
+        # Other arguments
+        parser.add_argument('--optimizer_type', type=str, default='quad_penalty', help='type of optimization to use [quad_penalty | aug_lagrangian]')
+        parser.add_argument('--log_params', type=eval, default=True, help='use log of some parameters during optimization')
+        parser.add_argument('--experiment_type', type=str, default='rto', help='type ot data to load [rto | ignition]')
 
         self.initialized = True
 
@@ -62,17 +67,18 @@ class KineticCellOptions():
 
         # Modify model-related parser options
         kinetic_cell_name = opt.kinetics_model
-        kc_option_setter = kinetics.get_option_setter(kinetic_cell_name)
+        kc_option_setter = simulation.get_option_setter(kinetic_cell_name)
         parser = kc_option_setter(parser)
         opt, _ = parser.parse_known_args()  # parse again with new defaults
 
-        # Modify data cell-related parser options
-        data_option_setter = kinetics.get_option_setter('data')
-        parser = data_option_setter(parser)
 
-        # Modify optimizer-related parser options
-        optimizer_option_setter = optim.get_option_setter(opt.optimizer_type)
-        parser = optimizer_option_setter(parser)
+        # Modify data- and optimizer-related parser options
+        if self.isOptimization:
+            data_option_setter = data.get_option_setter(opt.experiment_type)
+            parser = data_option_setter(parser)
+            optimizer_option_setter = optimization.get_option_setter(opt.optimizer_type)
+            parser = optimizer_option_setter(parser)
+
 
         # Save parser
         self.parser = parser

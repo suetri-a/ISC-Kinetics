@@ -1,7 +1,3 @@
-import argparse
-import os
-import kinetics
-import optim
 
 from .base_options import KineticCellOptions
 
@@ -11,11 +7,10 @@ class OptimizationOptions(KineticCellOptions):
     def initialize(self, parser):
         parser = KineticCellOptions().initialize(parser)
 
-        parser.set_defaults(name='optimization_example')
+        parser.set_defaults(name='optimization_example', isOptimization=True)
 
         # Optimization options
-        parser.add_argument('--log_params', type=eval, default=True, help='use log of some parameters during optimization')
-        parser.add_argument('--optimizer_type', type=str, default='quad_penalty', help='type of optimization to use [quad_penalty | aug_lagrangian]')
+        parser.add_argument('--phase', type=str, default='optimization', help='either simulation or optimization')
         parser.add_argument('--autodiff_enable', type=eval, default=False, help='use autodiff in optimizer')
         parser.add_argument('--param_prior', type=str, default='uniform', help='prior for use in parameter inversion [uniform]')
         parser.add_argument('--output_prior', type=str, default='gaussian', help='data prior for inversion [gaussian | exponential | ISO_peak | O2_peak]')
@@ -24,6 +19,8 @@ class OptimizationOptions(KineticCellOptions):
         # Reaction arguments
         parser.add_argument('--reaction_model', type=str, default='Chen2', 
             help='pre-programmed reaction model to use [Cinar | CinarMod1 | CinarMod2 | CinarMod3 | Chen1 | Chen 2 | Dechelette1 | Dechelette2 | Crookston]')
+        parser.add_argument('--kinetics_model', type=str, default='arrhenius', help='type of kinetics model to use [arrhenius | stars]')
+        parser.add_argument('--load_rxn', type=eval, default=True, help='names of reactants')
         parser.add_argument('--reac_names', type=str, default=None, help='names of reactants')
         parser.add_argument('--prod_names', type=str, default=None, help='names of products')
         parser.add_argument('--rxn_constraints', type=str, default=None, help='constraints in the reaction')

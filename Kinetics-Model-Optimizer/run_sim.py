@@ -18,5 +18,5 @@ from simulation import create_kinetic_cell
 if __name__ == '__main__':
     opts = SimulationOptions().parse()
     kinetic_cell = create_kinetic_cell(opts)
-    kinetic_cell.run_RTO_experiments()
+    kinetic_cell.run_RTO_experiments(kinetic_cell.params)
     kinetic_cell.save_plots()

@@ -12,13 +12,15 @@ import pickle
 import numpy as np
 
 from options.optimization_options import OptimizationOptions
-from simulation import create_kinetic_cell, create_data_cell
+from simulation import create_kinetic_cell
+from data import create_data_cell
 from optimization import create_optimizer
 
 if __name__ == '__main__':
     opts = OptimizationOptions().parse()
-    kinetic_cell = create_kinetic_cell(opts)
     data_cell = create_data_cell(opts)
-    optimizer = create_optimizer(opts)
+    kinetic_cell = create_kinetic_cell(opts)
+    kinetic_cell.clone_from_data(data_cell)
+    optimizer = create_optimizer(kinetic_cell, data_cell, opts)
     optimizer.optimize_cell()
 

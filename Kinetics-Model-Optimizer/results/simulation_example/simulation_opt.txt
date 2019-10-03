@@ -5,21 +5,19 @@
                        T0: 293.15                        
                     Tspan: [0.0, 600.0]                  
                        Ua: 15000.0                       
-              act_eng_fwd: [500.0, 40000.0, 90000.0]     	[default: None]
+              act_eng_fwd: [30000.0, 65000.0]            	[default: None]
               act_eng_rev: None                          
           autodiff_enable: True                          
                  balances: ['M', 'O']                    
          combustion_prods: ['H2O', 'CO', 'CO2', 'Gas']   	[default: None]
                comp_phase: {'H2O': 1, 'N2': 3, 'O2': 3, 'CO2': 3, 'CO': 3, 'Gas': 3, 'OIL-H': 2, 'OIL-L': 2, 'OIL': 2, 'Coke1': 4, 'Coke2': 4, 'Ci': 4}	[default: None]
-        data_from_default: None                          
-              dataset_dir: data                          
-             dataset_name: synthetic1                    
-           experiment_dir: example                       
+          experiment_type: rto                           
                 flow_rate: 0.00966667                    
-               fuel_comps: ['OIL-H', 'OIL-L', 'OIL', 'Coke1', 'Coke2', 'Ci']	[default: None]
+               fuel_comps: ['OIL-H', 'OIL-L']            	[default: None]
             heat_reaction: None                          
             heating_rates: [1.0, 2.0]                    
-               init_coeff: [[1, 'OIL', 20], [2, 'Coke1', 5], [2, 'O2', 8], [3, 'O2', 5], [3, 'H2O', 2]]	[default: None]
+               init_coeff: [[1, 'O2', 5], [1, 'OIL', 10], [2, 'O2', 5], [2, 'H2O', 10], [2, 'CO2', 6], [2, 'CO', 3]]	[default: None]
+           isOptimization: False                         
            iso_resolution: 100                           
                      kc_V: 2.895e-05                     
            kinetics_model: arrhenius                     
@@ -28,25 +26,18 @@
             material_dict: {'M': {'H2O': 18, 'N2': 28, 'O2': 32, 'CO2': 44, 'CO': 28, 'Gas': 28.04, 'OIL-H': 800, 'OIL-L': 400, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'O': {'H2O': 1, 'N2': 0, 'O2': 2, 'CO2': 2, 'CO': 1, 'Gas': 1, 'OIL-H': 0, 'OIL-L': 0, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'C': {'H2O': 0, 'N2': 0, 'O2': 2, 'CO2': 1, 'CO': 1, 'Gas': 1, 'OIL-H': 50, 'OIL-L': 30, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'Cp': {'N2': 29.93161, 'O2': 30.47713, 'H2O': 34.49885, 'CO2': 21.0855, 'CO': 30.08316, 'Gas': 30.99, 'OIL-H': 225.658, 'OIL-L': 225.658, 'OIL': 125.658, 'Coke1': 8.3908475, 'Coke2': 6.96015, 'Ci': 7.192155}}	[default: None]
                  max_temp: 750.0                         
                      name: simulation_example            
-                num_peaks: [2, 2, 2, 2, 2, 2]            
             num_sim_steps: 250                           
                   oil_sat: 0.04                          
-            optim_verbose: False                         
-         optim_write_file: optim_write_file.pkl          
-       optim_write_output: True                          
            optimizer_type: quad_penalty                  
-             output_prior: gaussian                      
-              param_prior: uniform                       
-          peak_weight_vec: [75.0, 75.0, 250.0, 250.0]    
                     phase: simulation                    
                  porosity: 0.36                          
-              pre_exp_fwd: [0.1, 0.01, 1.0]              	[default: None]
+              pre_exp_fwd: [1.0, 10.0]                   	[default: None]
               pre_exp_rev: None                          
-               prod_names: [['OIL'], ['Coke1', 'CO', 'CO2', 'H2O', 'Gas'], ['CO', 'CO2', 'H2O']]	[default: None]
-               reac_names: [['OIL-H'], ['OIL', 'O2'], ['Coke1', 'O2']]	[default: None]
-                 reac_tol: 0.0001                        
-           reaction_model: Chen1                         	[default: Chen2]
+               prod_names: [['OIL'], ['CO', 'CO2', 'H2O']]	[default: None]
+        pseudo_fuel_comps: ['Coke1', 'Coke2', 'Ci', 'OIL']	[default: None]
+               reac_names: [['OIL-H', 'O2'], ['OIL', 'O2']]	[default: None]
+           reaction_model: Chen2                         
               results_dir: results                       
-          rxn_constraints: [[2, 'O2', 'CO2', 0.8333333333333334], [2, 'CO2', 'CO', 0.4], [3, 'O2', 'CO2', 0.8333333333333334], [3, 'CO2', 'CO', 0.4]]	[default: None]
+          rxn_constraints: [[2, 'CO2', 'CO', 0.5]]       	[default: None]
             solver_method: BDF                           
 ----------------- End -------------------
