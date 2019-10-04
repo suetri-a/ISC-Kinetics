@@ -201,6 +201,12 @@ class STARSModel(KineticCellBase):
         
         self.params = x # Make sure parameters and mapped parameters are synchronized
         self.map_params(self.params) # Map parameters into reaction variables
+
+        # self.sim_completed, self.parsed = False, False
+        # clear_stars_files(self.folder_name)
+        # self.write_dat_file(components, kinetics, IC_dict, heating_rate)
+        # self.run_dat_file(None, None, None)
+        # self.parse_stars_output(None)
         
         reaction_list = self.get_stars_reaction_list()
 
