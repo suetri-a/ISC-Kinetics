@@ -20,8 +20,8 @@ def get_predefined_rxn(opts):
         pre_exp_factors = np.array([1e1, 1e1, 1e-1, 1e-1, 1e-3, 1e-3])
         act_energies = np.array([1e5, 5e4, 6e4, 8e4, 8e4, 1e5])
 
-        rxn_constraints = [[2, 'O2', 'CO2', 0.5], [2, 'CO2', 'CO', 0.4201], 
-            [4, 'O2', 'CO2', 1/1.15], [4, 'CO2', 'CO', 0.3294]]
+        rxn_constraints = [[2, 'O2', 'CO2', 0.5], [2, 'O2', 'CO', 0.21], 
+            [4, 'O2', 'CO2', 1/1.15], [4, 'O2', 'CO', 0.286]]
         init_coeff = [[1, 'O2',30], [1, 'Coke1', 10], [1, 'H2O', 2],
             [2, 'O2', 5], [2, 'CO', 0.3181], [2, 'CO2', 0.75], [2, 'H2O', 1.3815], 
             [3, 'Coke2', 1.3824], 
@@ -216,6 +216,7 @@ def get_predefined_rxn(opts):
     if hasattr(opts,'act_eng_fwd'): opts.act_eng_fwd = act_energies
     if hasattr(opts, 'rxn_constraints'): opts.rxn_constraints = rxn_constraints
     if hasattr(opts, 'init_coeff'): opts.init_coeff = init_coeff
+    if hasattr(opts, 'heat_reaction'): opts.heat_reaction = heat_reaction
 
     return opts
 
@@ -258,7 +259,7 @@ def get_component_props(opts):
             'CO': 30.08316, 'Gas': 30.99, 'OIL-H': 225.658, 'OIL-L': 225.658,
             'OIL': 125.658, 'Coke1': 8.3908475, 'Coke2': 6.96015, 'Ci': 7.192155}
     
-    elif opts.kinetics_model == 'STARS':
+    elif opts.kinetics_model == 'stars':
         # Oxygen counts
         opts.material_dict['O'] = {'H2O': 1, 'N2': 0, 'O2': 2, 'CO2': 2, 'CO': 1, 'Gas': 1, 
             'OIL-H': 0, 'OIL-L': 0, 'OIL': np.nan, 'Coke1': np.nan, 'Coke2': np.nan, 'Ci': np.nan} 
@@ -267,17 +268,17 @@ def get_component_props(opts):
         opts.material_dict['C'] = {'H2O': 0, 'N2': 0, 'O2': 2, 'CO2': 1, 'CO': 1, 'Gas': 1, 
             'OIL-H': 50, 'OIL-L': 30, 'OIL': np.nan, 'Coke1': np.nan, 'Coke2': np.nan, 'Ci': np.nan} 
 
-        if opts.stars_base_model =='CINAR':
+        if opts.stars_base_model =='cinar':
             # Molecular weights
-            opts.material_dict['M'] = {'H2O': 18, 'N2': 28, 'O2': 32, 'CO2': 44, 'CO': 28, 'Gas': 28.04, # Product species
-                'OIL-H': 800, 'OIL-L': 400, # Parent oil species
+            opts.material_dict['M'] = {'H2O': 1.8e-2, 'N2': 2.8e-2, 'O2': 3.2e-2, 'CO2': 4.4e-2, 'CO': 2.8e-2, 'Gas': 2.8e-2, # Product species
+                'OIL-H': 4.73e-1, 'OIL-L': 2.36e-1, # Parent oil species
                 'OIL': np.nan, 'Coke1': np.nan, 'Coke2': np.nan, 'Ci': np.nan # Pseudocomponents
                 }
         
-        elif opts.stars_base_model == 'KRISTENSEN':
+        elif opts.stars_base_model == 'kristensen':
             pass
 
-        elif opts.stars_base_model == 'CHEN':
+        elif opts.stars_base_model == 'chen':
             pass
 
 

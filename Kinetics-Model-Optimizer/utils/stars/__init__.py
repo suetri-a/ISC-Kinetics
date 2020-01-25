@@ -12,33 +12,41 @@ def get_component_dict(comp_name, base_model):
 
     component_dict = {}
 
-    if base_model == 'CINAR':
-        component_dict["H2O"] = Component(NAME="H2O",CMM=[1.8e-2],PCRIT=[22083],TCRIT=[373.8],
+    if base_model == 'cinar':
+        component_dict["H2O"] = Component(COMPNAME="H2O",CMM=[1.8e-2],PCRIT=[22083],TCRIT=[373.8],
                                         AVG=[0],BVG=[0],AVISC=[0],BVISC=[0],
                                         CPG1=[0],CPG2=[0],CPG3=[0],CPG4=[0],CPL1=[0],CPL2=[0],
                                         MASSDEN=[0.001],CP=[0],CT1=[0],CT2=[0],SOLID_DEN=[],SOLID_CP=[])
-        component_dict["OIL"] = Component(NAME="OIL",CMM=[4.73e-1],PCRIT=[890],TCRIT=[171],
+        component_dict["OIL-H"] = Component(COMPNAME="HEAVY OIL",CMM=[9.26e-1],PCRIT=[890],TCRIT=[171],
                                         AVG=[0.0001610891804],BVG=[0.7453161006],AVISC=[1.426417368e-11],BVISC=[10823.06574],
                                         CPG1=[26.804420692906],CPG2=[0.005649089963],CPG3=[0.000095012314],CPG4=[-0.000000054709],CPL1=[524.8821790],CPL2=[1.148635444845],
                                         MASSDEN=[0.000999798],CP=[7.25e-7],CT1=[0.00069242],CT2=[0])
-        component_dict["N2"] = Component(NAME="N2",CMM=[2.8e-2],PCRIT=[3392],TCRIT=[-147],
+        component_dict["OIL-L"] = Component(COMPNAME="LITE OIL",CMM=[4.73e-1],PCRIT=[890],TCRIT=[171],
+                                        AVG=[0.0001610891804],BVG=[0.7453161006],AVISC=[1.426417368e-11],BVISC=[10823.06574],
+                                        CPG1=[26.804420692906],CPG2=[0.005649089963],CPG3=[0.000095012314],CPG4=[-0.000000054709],CPL1=[524.8821790],CPL2=[1.148635444845],
+                                        MASSDEN=[0.000999798],CP=[7.25e-7],CT1=[0.00069242],CT2=[0])
+        component_dict["OIL"] = Component(COMPNAME="OIL",CMM=[4.73e-1],PCRIT=[890],TCRIT=[171],
+                                        AVG=[0.0001610891804],BVG=[0.7453161006],AVISC=[1.426417368e-11],BVISC=[10823.06574],
+                                        CPG1=[26.804420692906],CPG2=[0.005649089963],CPG3=[0.000095012314],CPG4=[-0.000000054709],CPL1=[524.8821790],CPL2=[1.148635444845],
+                                        MASSDEN=[0.000999798],CP=[7.25e-7],CT1=[0.00069242],CT2=[0])
+        component_dict["N2"] = Component(COMPNAME="N2",CMM=[2.8e-2],PCRIT=[3392],TCRIT=[-147],
                                         AVG=[0.0003500869287],BVG=[0.6927470725],AVISC=[],BVISC=[],
                                         CPG1=[30.956477056957],CPG2=[-0.012716023994],CPG3=[0.000025490143],CPG4=[-0.000000011065],CPL1=[0],CPL2=[0])
-        component_dict["O2"] = Component(NAME="O2",CMM=[3.2e-2],PCRIT=[5033],TCRIT=[-118],
+        component_dict["O2"] = Component(COMPNAME="O2",CMM=[3.2e-2],PCRIT=[5033],TCRIT=[-118],
                                         AVG=[0.000362791571],BVG=[0.7120986013],AVISC=[],BVISC=[],
                                         CPG1=[28.600167325729],CPG2=[-0.003497011859],CPG3=[0.000024399453],CPG4=[-0.000000014928],CPL1=[0],CPL2=[0])
-        component_dict["CO2"] = Component(NAME="CO2",CMM=[4.4e-2],PCRIT=[7377],TCRIT=[31],
+        component_dict["CO2"] = Component(COMPNAME="CO2",CMM=[4.4e-2],PCRIT=[7377],TCRIT=[31],
                                         AVG=[0.0001865724378],BVG=[0.7754816784],AVISC=[],BVISC=[],
                                         CPG1=[19.474325955388],CPG2=[0.075654731286],CPG3=[-0.000060750197],CPG4=[0.000000020109],CPL1=[0],CPL2=[0])
-        component_dict["CO"] = Component(NAME="CO",CMM=[2.8e-2],PCRIT=[3496],TCRIT=[-144],
+        component_dict["CO"] = Component(COMPNAME="CO",CMM=[2.8e-2],PCRIT=[3496],TCRIT=[-144],
                                         AVG=[0.0003315014585],BVG=[0.7037315714],AVISC=[],BVISC=[],
                                         CPG1=[30.990187019402],CPG2=[-0.01392019971],CPG3=[0.00003014996],CPG4=[-0.00000001415],CPL1=[0],CPL2=[0])
-        component_dict["Coke1"] = Component(NAME="Coke1",CMM=[1.88e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[8.3908475,0.0439425])
-        component_dict["Coke2"] = Component(NAME="Coke2",CMM=[1.36e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[6.96015,0.03645])
-        component_dict["Ci"] = Component(NAME="Ci",CMM=[2.08e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[7.192155,0.037665])
+        component_dict["Coke1"] = Component(COMPNAME="Coke1",CMM=[1.88e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[8.3908475,0.0439425])
+        component_dict["Coke2"] = Component(COMPNAME="Coke2",CMM=[1.36e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[6.96015,0.03645])
+        component_dict["Ci"] = Component(COMPNAME="Ci",CMM=[2.08e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[7.192155,0.037665])
 
 
-    elif base_model == 'KRISTENSEN':
+    elif base_model == 'kristensen':
         component_dict['H2O'] = Component(NAME="WATER",CMM=[0.018],PCRIT=[21754.478],TCRIT=[647.4],ACEN=[0.344],
                                                 AVG=[1.7e-5],BVG=[1.116],AVISC=[7.52e-5],BVISC=[1384.86],
                                                 CPG1=[7.701],CPG2=[4.595e-4],CPG3=[2.521e-6],CPG4=[-0.859e-9],
@@ -59,7 +67,7 @@ def get_component_dict(comp_name, base_model):
                                                 CPG1=[28.106],CPG2=[-3.68e-6],CPG3=[1.746e-5],CPG4=[-1.065e-8])
         component_dict['COKE'] = Component(NAME="COKE",CMM=[0.013],SOLID_DEN=[916.344, 0, 0],SOLID_CP=[16, 0])
 
-    elif base_model == 'CHEN':
+    elif base_model == 'chen':
         component_dict["H2O"] = Component(NAME="H2O",CMM=[1.8e-2],PCRIT=[22083],TCRIT=[373.8],
                                         AVG=[0],BVG=[0],AVISC=[0],BVISC=[0],
                                         CPG1=[0],CPG2=[0],CPG3=[0],CPG4=[0],CPL1=[0],CPL2=[0],

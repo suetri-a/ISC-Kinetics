@@ -7,8 +7,9 @@ from .rto_base import RtoBase
 
 def get_vkc_model(model_name):
 
-    model_filename = "rto." + model_name + "_vkc"
-    modellib = importlib.import_module(model_filename)
+    model_filename = "." + model_name + "_vkc"
+    # modellib = importlib.import_module(model_filename, package='utils.stars.rto')
+    modellib = importlib.import_module(model_filename, package='rto')
     
     model = None
     target_modellib = model_name.replace('_', '') + 'vkc'

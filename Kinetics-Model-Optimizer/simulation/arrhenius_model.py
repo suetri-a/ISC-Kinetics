@@ -30,6 +30,7 @@ class ArrheniusModel(KineticCellBase):
         super().__init__(opts)
 
         # Load parameters from options
+        self.time_line = np.linspace(60*opts.Tspan[0], 60*opts.Tspan[1], num=opts.num_sim_steps)
         self.heat_reaction = opts.heat_reaction
         self.pre_exp_factors = opts.pre_exp_fwd
         self.act_energies = opts.act_eng_fwd

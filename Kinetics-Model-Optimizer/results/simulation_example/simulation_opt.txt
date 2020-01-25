@@ -7,26 +7,24 @@
                        Ua: 15000.0                       
               act_eng_fwd: [30000.0, 65000.0]            	[default: None]
               act_eng_rev: None                          
-          autodiff_enable: True                          
                  balances: ['M', 'O']                    
          combustion_prods: ['H2O', 'CO', 'CO2', 'Gas']   	[default: None]
                comp_phase: {'H2O': 1, 'N2': 3, 'O2': 3, 'CO2': 3, 'CO': 3, 'Gas': 3, 'OIL-H': 2, 'OIL-L': 2, 'OIL': 2, 'Coke1': 4, 'Coke2': 4, 'Ci': 4}	[default: None]
           experiment_type: rto                           
                 flow_rate: 0.00966667                    
                fuel_comps: ['OIL-H', 'OIL-L']            	[default: None]
-            heat_reaction: None                          
+            heat_reaction: [-100.0, -4000.0]             	[default: None]
             heating_rates: [1.0, 2.0]                    
                init_coeff: [[1, 'O2', 5], [1, 'OIL', 10], [2, 'O2', 5], [2, 'H2O', 10], [2, 'CO2', 6], [2, 'CO', 3]]	[default: None]
            isOptimization: False                         
            iso_resolution: 100                           
                      kc_V: 2.895e-05                     
-           kinetics_model: arrhenius                     
+           kinetics_model: stars                         	[default: arrhenius]
                  load_rxn: True                          
                log_params: True                          
-            material_dict: {'M': {'H2O': 18, 'N2': 28, 'O2': 32, 'CO2': 44, 'CO': 28, 'Gas': 28.04, 'OIL-H': 800, 'OIL-L': 400, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'O': {'H2O': 1, 'N2': 0, 'O2': 2, 'CO2': 2, 'CO': 1, 'Gas': 1, 'OIL-H': 0, 'OIL-L': 0, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'C': {'H2O': 0, 'N2': 0, 'O2': 2, 'CO2': 1, 'CO': 1, 'Gas': 1, 'OIL-H': 50, 'OIL-L': 30, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'Cp': {'N2': 29.93161, 'O2': 30.47713, 'H2O': 34.49885, 'CO2': 21.0855, 'CO': 30.08316, 'Gas': 30.99, 'OIL-H': 225.658, 'OIL-L': 225.658, 'OIL': 125.658, 'Coke1': 8.3908475, 'Coke2': 6.96015, 'Ci': 7.192155}}	[default: None]
+            material_dict: {'O': {'H2O': 1, 'N2': 0, 'O2': 2, 'CO2': 2, 'CO': 1, 'Gas': 1, 'OIL-H': 0, 'OIL-L': 0, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'C': {'H2O': 0, 'N2': 0, 'O2': 2, 'CO2': 1, 'CO': 1, 'Gas': 1, 'OIL-H': 50, 'OIL-L': 30, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'M': {'H2O': 0.018, 'N2': 0.028, 'O2': 0.032, 'CO2': 0.044, 'CO': 0.028, 'Gas': 0.028, 'OIL-H': 0.473, 'OIL-L': 0.236, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}}	[default: None]
                  max_temp: 750.0                         
                      name: simulation_example            
-            num_sim_steps: 250                           
                   oil_sat: 0.04                          
            optimizer_type: quad_penalty                  
                     phase: simulation                    
@@ -39,5 +37,7 @@
            reaction_model: Chen2                         
               results_dir: results                       
           rxn_constraints: [[2, 'CO2', 'CO', 0.5]]       	[default: None]
-            solver_method: BDF                           
+         stars_base_model: cinar                         
+           stars_exe_path: 'C:\Program Files (x86)\CMG\STARS\2017.10\Win_x64\EXE\st201710.exe'
+         stars_sim_folder: stars                         
 ----------------- End -------------------

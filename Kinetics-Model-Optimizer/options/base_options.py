@@ -104,7 +104,7 @@ class KineticCellOptions():
         for k, v in sorted(vars(opt).items()):
             comment = ''
             default = self.parser.get_default(k)
-            if v != default:
+            if default is None or v != default:
                 comment = '\t[default: %s]' % str(default)
             message += '{:>25}: {:<30}{}\n'.format(str(k), str(v), comment)
         message += '----------------- End -------------------'

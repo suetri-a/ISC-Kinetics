@@ -25,22 +25,33 @@ class RtoBase(ABC):
     #
     ##############################################################################################
 
-    def write_dat_file(self, components, kinetics, IC_dict, heating_rate):
+    def write_dat_file(self, COMPS=None, REACTS=None, IC_dict=None, HR=None, 
+                        TFINAL=500, TEMP_MAX = 750, O2_con_in = 0.21):
+        '''
+        Inputs:
+            COMPS - dictionary of component data for the reaction
+            REACTS - list of reactions for the runfile
+            IC_dict - dictionary of initial condition for Heavy Oil and Oxygen. All other components
+                are assumed to have an initial concentration of 0.
+            HR - heating rate
+            TSPAN - two-element list containing the start and end time (in minutes)
+
+        '''
+        clear_stars_files(self.folder_name)
         newfile_path = self.folder_name + self.input_file_name + '.dat'
         fileID = open(newfile_path, 'a')
-        
+                
         self.print_IO_control(fileID)
         self.print_grid(fileID)
-        self.print_fluid(fileID, components)
-        self.print_reactions(fileID, kinetics)
-        self.K_value_table(fileID)
+        self.print_fluid(fileID, COMPS)
+        self.print_reactions(fileID, REACTS)
         self.print_ref_cond(fileID)
         self.print_rock_fluid(fileID)
-        self.print_initial_cond(fileID)
+        self.print_initial_cond(fileID, IC_dict)
         self.print_numerical(fileID)
-        self.print_recurrent(fileID)
+        self.print_recurrent(fileID, O2_con_in)
         self.print_heater(fileID)
-        self.print_heating_ramp(fileID, heating_rate)
+        self.print_heating_ramp(fileID, HR, TFINAL, TEMP_MAX)
         fileID.close()
 
 
@@ -53,7 +64,15 @@ class RtoBase(ABC):
         pass
         
     def print_attrs(self, components, attrslist, fileID):
-        comp_names = components.keys()
+        '''
+        Print attributes across all components. Components must be ordered by 
+            phase value so the attributes are printed in the correct order.
+
+        '''
+        comp_names = components.keys() # get component names
+        phases = [components[c].phase for c in comp_names] # get phases
+        comp_names = [c for _, c in sorted(zip(phases,comp_names))] # sort comp_names according to phase
+
         for attr in attrslist:
             print_str='*' + attr
             for comp in comp_names:
@@ -71,32 +90,22 @@ class RtoBase(ABC):
     
 
     def print_reactions(self, fileID, kinetics):
-        print('**Reactions', file = fileID)
-        print('**-----------', file = fileID)
+        print('** ==============  REACTIONS  ======================', file = fileID)
+        
         # Loop over reactions in list
         for r in kinetics:
             r.print_rxn(fileID)
-
-
-    def K_value_table(self, fileID, K_value_file = None, K_option = 2):
-    # if K_option = 1: use the Wilson K relations for the K value table
-    # if K_option = 2: use Murat model K value table coefficients
-        if K_option == 1:
-            K_fid = [line for line in open(K_value_file)]
-            #K_fileID = open(K_value_file, 'r')
-            i = 0
-            i = copy_up_to_string(K_fid, fileID, i, '**End_of_K_value_table**')
-
-            
-        if K_option == 2:
-            print("""
-    *KV1 0 0 
-    *KV2 0 0 
-    *KV3 0 0 
-    *KV4 0 0 
-    *KV5 0 0 
+        
+        # Print K value table
+        print("""
+*KV1 0 0 
+*KV2 0 0 
+*KV3 0 0 
+*KV4 0 0 
+*KV5 0 0 
 
                 """, file = fileID)
+            
 
     @abstractmethod
     def print_ref_cond(self, fileID):
@@ -107,7 +116,7 @@ class RtoBase(ABC):
         pass
 
     @abstractmethod
-    def print_initial_cond(self, fileID):
+    def print_initial_cond(self, fileID, IC_dict):
         pass
 
     @abstractmethod
@@ -115,7 +124,7 @@ class RtoBase(ABC):
         pass
 
     @abstractmethod
-    def print_recurrent(self, fileID):
+    def print_recurrent(self, fileID, O2_con_in):
         pass
 
     @abstractmethod
@@ -123,7 +132,7 @@ class RtoBase(ABC):
         pass
 
     @abstractmethod
-    def print_heating_ramp(self, fileID, heating_rate):
+    def print_heating_ramp(self, fileID, heating_rate, tfinal, tempmax):
         pass
 
 
@@ -133,15 +142,13 @@ class RtoBase(ABC):
     #
     ##############################################################################################
 
-    def run_dat_file(self, exe_path, cd_path, dat_file_name):
+    def run_dat_file(self, exe_path, cd_path):
         '''
         Example for definition of path
         exe_path='"C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe"'
         cd_path='cd C:\\Users\\yunanli\\Desktop\\CMG\\VKC '
-        dat_file_name can be returned from writedatfile function
         '''
-
-        os_system_line = cd_path + '&' + exe_path + '  -f ' + f'"{dat_file_name}"' + '.dat'
+        os_system_line = 'cd ' + cd_path + ' & ' + exe_path + '  -f ' + f'"{self.input_file_name}"' + '.dat'
         os.system(os_system_line)
         self.sim_completed = True
 
@@ -155,7 +162,8 @@ class RtoBase(ABC):
     def parse_stars_output(self):
 
         # Open STARS output files
-        FID = [line.decode('utf-8', errors='ignore') for line in open(self.input_file_name + '.irf', 'rb')]
+        fid_temp = open(self.input_file_name + '.irf', 'rb')
+        FID = [line.decode('utf-8', errors='ignore') for line in fid_temp]
         FID_bin = open(self.input_file_name + '.mrf', 'rb')
 
         # Initialize variables/objects for parsing data
@@ -180,12 +188,10 @@ class RtoBase(ABC):
             'RSTSPEC16-REC', 'RSTSPEC17-REC', 'RSTSPEC18-REC', 'RSTSPEC19-REC', 'RSTSPEC20-REC', 'RSTSPEC21-REC',
             'RSTSPEC22-REC']
 
-        skip_list = ['WELL-ARRAY', 'LAYER-ARRAY', 'GROUP-ARRAY']
-
         # Iterate over lines of file
         while i < len(FID):
             line_split = FID[i].split()
-
+            
             # Parse case-by-case quantities
             if line_split[0] == 'INTERNAL-UNIT-TABLE':
                 i+=1 
@@ -256,8 +262,6 @@ class RtoBase(ABC):
                 props_list, i = self.parse_nobin(FID, i)
                 for prop in props_list[3:]:
                     num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
-                    # print(prop)
-                    # print(np.asscalar(num_bytes))
                     if prop == 'SPVALS':
                         spvals_temp = np.fromfile(FID_bin, np.float64, count=self.numSPHIST).byteswap()
                         self.SP['VAL'].append(spvals_temp)
@@ -266,13 +270,13 @@ class RtoBase(ABC):
 
 
             # Variables stored in binary but skipped in parsing
-            elif line_split[0] in skip_list:
-                item_num = int(line_split[2])
-                for j in range(item_num):
-                    num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
-                    _ = np.fromfile(FID_bin, np.byte, count=np.asscalar(num_bytes)).byteswap() 
+            elif len(line_split) >= 4:
+                if line_split[1]=='(' and line_split[3]==')':
+                    item_num = int(line_split[2])
+                    for j in range(item_num):
+                        num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
+                        _ = np.fromfile(FID_bin, np.byte, count=np.asscalar(num_bytes)).byteswap() 
                 i+=1
-
 
             # Other variables parsed from text file
             elif line_split[0] in REC_list:
@@ -288,11 +292,9 @@ class RtoBase(ABC):
 
         FID_bin.close()
 
-        # OUTPUT VARIABLES MURAT
         self.t = (np.asarray(self.TIME['VECT'])[:,1]).astype(np.float)
-        TEMP_VALS = np.asarray(self.GRID['TEMP'])
-        self.lin_HR = np.asarray(TEMP_VALS)[:,8]
         self.SPEC_VALS = np.asarray(self.SP['VAL'])
+        self.parsed = True
 
             
     @staticmethod
@@ -310,4 +312,6 @@ class RtoBase(ABC):
 
         return list_temp[1:-1], i
 
-    
+    @abstractmethod
+    def get_reaction_dict(self):
+        pass

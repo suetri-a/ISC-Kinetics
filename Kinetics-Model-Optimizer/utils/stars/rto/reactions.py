@@ -4,24 +4,19 @@ import os
 class Component():
     '''
     Component for writing STARS runfile
-    Fluid options:
-
-        1 - Morten's setup
-
-        2 - Murat's setup
-    Attributes: 
-        Option 1:
-        Option 2: 
+    
     '''
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         
+
 class Kinetics():
     '''
     Reaction definition for writing STARS runfile
     '''
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+        
     def print_rxn(self, filename):
         print('** {}'.format(self.NAME), file=filename)
         attrs_list = ['STOREAC', 'STOPROD', 'RORDER', 'FREQFAC', 'EACT', 'RENTH', 'O2PP']
@@ -33,3 +28,4 @@ class Kinetics():
                 else:
                     print_ln += str(getattr(self, attr)) + ' '
                 print(print_ln, file=filename)
+        print('\n',file=filename)

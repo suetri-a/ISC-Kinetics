@@ -15,7 +15,324 @@ Attention:
 """
 
 import numpy as np
+import struct
+
+#import makeVectors as mV
+import sys
+import h5py as hdf
+import datetime as dat
+import io
 import os
+
+def ignition_extinction_envelope(sim_folder, base_file, total_airrate, variable_type, total_variable, exe_path, cd_path, delete_dat_file_path, tempthreshold, option):
+    '''
+    Input details:
+        sim_folder: the name for the folder collecting all the simulation models (e.g.:'VKC/')
+        base_file: the name for the base file (.dat file) to change the values for selected variables (e.g.:'base_file.dat')
+        Attention: base_file need to be saved in the sim_folder
+        exe_path: the path for the CMG exe files, (e.g.: '"C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe"')
+        cd_path: the path until to the folder collecting all dat files to be run (e.g.: 'cd C:\\Users\\yunanli\\Desktop\\CMG\\VKC ')
+        delete_dat_file_path: this path helps to delete the extinction files in a special format (e.g.: 'C:\\Users\\yunanli\\Desktop\\CMG\\VKC\\')
+        
+        airrate_start: the initial point for air flow rate in appropriate format
+        airrate_end: the end point for air flow rate in appropriate format
+        airrate_step: the step size for the air flow array
+        variable_type: the variable type need to be defined in str format
+        variable_value_start, 
+        variable_value_end, 
+        variable_value_step, 
+        flag_string: the key information to capture from out files to find the peak temperature (e.g.: flag_string = ['Temperature', '(Fahrenheit)'])
+        tempthreshold: the value to  classify ignition extinction cases (440.33 [F] or 500 [K] pay attention to unit system)
+        
+    '''
+    #total_airrate=np.arange(airrate_start, airrate_end, airrate_step)
+    #total_variable=np.arange(variable_value_start, variable_value_end, variable_value_step)
+    ignition_result = []
+    extinction_result = []
+    Ereact_rate_result = []
+    Ereact_rate_result_extinction = []
+    status_record = ['extinction']
+    sim_count = 0
+    
+    for variable in total_variable:
+        for airrate in total_airrate:
+            # Make sure no rounding happens
+            airrate = np.round(airrate, decimals = 8)
+            variable = np.round(variable, decimals = 8)
+            # Write a new dat file
+            dat_file_name = write_dat_file(sim_folder, airrate, variable, variable_type, base_file)
+            # Run this file
+            run_dat_file(exe_path, cd_path, dat_file_name)
+            # Result analysis
+            file_name_out = sim_folder + dat_file_name + '.out'
+            fid = [line for line in open(file_name_out)]
+            fileID = open(file_name_out,'r')
+            #resultlist = result_summary(fid, fileID, 0, flag_string)
+            #status = ignite(resultlist, tempthreshold, option)
+            status_list = ignite(fid, fileID, tempthreshold, option)
+            status = status_list[0]
+            Ereact_rate = status_list[1]
+            fileID.close()
+            status_record.append(status)
+            sim_count = sim_count + 1
+            if status == 'ignition':
+                ignition_result.append([airrate, variable])
+                Ereact_rate_result.append(Ereact_rate)
+            else:
+                extinction_result.append([airrate, variable])
+                Ereact_rate_result_extinction.append(Ereact_rate)
+            if status_record[sim_count-1] == status_record[sim_count]:
+                delete_dat_file(delete_dat_file_path, dat_file_name)
+            #else: 
+                #print('Please check your code, something wrong')
+    print('The lower boundary is the ignition case, and the upper boundary is the extinction case')    
+    return ignition_result, Ereact_rate_result, extinction_result, Ereact_rate_result_extinction                
+                
+"""
+    dat_file_dir = os.listdir(delete_dat_file_path)
+
+    for item in dat_file_dir:
+        if item.endswith(".irf"):
+            try:
+                os.remove(os.path.join(dir_name, item))
+            except OSError as e:
+                print(e)
+            
+        if item.endswith(".mrf"):
+            try: 
+                os.remove(os.path.join(dir_name, item))
+            except OSError as e:
+                print(e)
+"""
+
+
+
+
+#This function helps to establish the batch file
+def write_batch_file(thermocondstart, thermocondend, thermocondstep, airratestart, airrateend, airratestep, path, batch_file_name):
+    '''
+    This function can help to generate the batch file including all cases.
+    Instructinos: find the generated txt file following the path we defined
+                  change the property from .txt to .bat
+                  drag the .bat file to the terminal to run all cases
+    Examples: path='M:\\temp_airflow\\Run2_low'
+                
+    '''
+    
+    cd='cd'+' '+path
+    CMG='"C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe"'
+    # Construct the name for .dat files
+    thermocond=np.arange(thermocondstart,thermocondend,thermocondstep)
+    airrate=np.arange(airratestart,airrateend,airratestep)
+    
+    filename=[]
+    for i in thermocond:
+        for j in airrate:
+            s='{m}_{n}.dat'
+            name=s.format(m=np.round(i,decimals=3),n=np.round(j,decimals=4))
+            
+            #t='"C:\Program Files (x86)\CMG\STARS\2017.10\Win_x64\EXE\st201710.exe"   \-f "'{FILENAME}'" -wd "C:\Users\yunanli\Desktop\CMG\VKC"  -wait'
+            #line=t.format(FILENAME=name)
+            filename=np.append(filename,name)
+            
+    batcharray=[]
+    with io.open(path + batch_file_name,'a',encoding="utf-8") as f:
+        f.write(f'{cd}'+'\n')
+        for number in range(len(filename)):
+            batchline=CMG+'  '+'-f'+' '+f'"{filename[number]}"'+' -wd '+f'"{path}"'+'  '+'-wait'
+            batcharray=np.append(batcharray,batchline)
+            f.write(f'{batchline}'+'\n')
+            
+
+
+def write_dat_file(sim_folder, airrate, variable_value, variable_type, base_file):
+#def writeSTARSrunfile(sim_folder, freqfac, eact, renth, sat_oil, coeff_P, coeff_R, R_Order, MW_vec, base_file):
+    '''
+    This function helps to generate all the cases in .dat format for CMG to run.
+    Instructions: this function only works for the change of air flow rate and several other variables (05/12/2019)
+                  We need to add the keywords indicator to the base case .dat files
+                  The keywords indicators are right above the line we want to change
+    Inputs:
+        
+        sim_folder - directory where simulations will be written (sim_folder='Run2_low/')
+        thermocond - thermal conductivity in CMG to count for heat loss, 
+        airrate - injected air flow rate, 
+        
+    Variable types:
+        0. Air flow rate (airrate)
+           CMG key word: **Key_Word_for_Air_Flow_Rate**        
+        1. Thermal conductivity (thermocond)
+           CMG key word: **Key_Word_for_Thermal_Conductivity**
+        2. Bottom hole pressure (BHP)
+           CMG key word: **Key_Word_for_Bottom_Hole_Pressure**
+        3. Proportional heat transfer coefficient (UHTR). This is a factor in CMG Constant and Convective Heat Transfer Model part.
+           CMG key word: **Key_Word_for_Proportional_Heat_Transfer_Coefficient**
+        4. Injection temperature (Tinj)
+           CMG key word: **Key_Word_for_Injection_Temperature**
+        5. Constant heat transfer rate (HEATR)
+           CMG key word: **Key_Word_for_Constant_Heat_Transfer_Rate**
+        6. Heat loss properties (HLOSSPROP)
+           CMG key word: **Key_Word_for_Heatloss_Properties**
+        
+        HRates - list of heating rates
+        num_rxns - number of reactions, integer
+        t_init - initial time, scalar
+        t_steps - total number of time steps, integer
+        temp_max - maximum temperature scalar
+        freqfac - frequency factors, NumPy Array
+        eact - activation energies, NumPy Array
+        renth - enthalpies of reaction, NumPy Array
+        sat_oil - oil saturation, scalar
+        coeff_P - product coefficients, NumPy Array
+        coeff_R - product coefficients, NumPy Array
+        R_Order - product coefficients, NumPy Array
+        MW_vec - product coefficients, NumPy Array
+        base_file - product coefficients, string
+
+    '''
+
+    # Load baseline simulation deck
+
+    # Path to baseline case
+    BaseCaseDatPath = sim_folder + base_file
+
+    # Allocate a cell array that we will use to store the baseline
+    fid = [line for line in open(BaseCaseDatPath)]
+    
+    if variable_type == 'thermocond':
+        thermocond = variable_value
+        # Create new file
+        dat_file_name = 'thermocond' + str(thermocond) + '_' + 'airrate' + str(airrate)
+        file_name = sim_folder + 'thermocond' + str(thermocond) + '_' + 'airrate' + str(airrate) + '.dat'
+        fileID = open(file_name,'w')
+        i = 0
+        # Loading everything before the key word ** Define heat loss (included)
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Thermal_Conductivity**')
+        # Change the values for thermal conductivity
+        i = print_thermal_conductivity(fid, fileID, i, thermocond)
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Air_Flow_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_air_rate(fid, fileID, i, airrate)
+
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Stop**')
+    
+        fileID.close()
+        
+    elif variable_type == 'BHP':
+        BHP = variable_value
+        # Create new file
+        dat_file_name = 'BHP' + str(BHP) + '_' + 'airrate' + str(airrate)
+        file_name = sim_folder + 'BHP' + str(BHP) + '_' + 'airrate' + str(airrate) + '.dat'
+        fileID = open(file_name,'w')
+        i = 0
+
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Air_Flow_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_air_rate(fid, fileID, i, airrate)
+        # Loading everything before the key word ** Define heat loss (included)
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Bottom_Hole_Pressure**')
+        # Change the values for thermal conductivity
+        i = print_BHP(fid, fileID, i, BHP)
+
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Stop**')
+    
+        fileID.close()
+        
+    elif variable_type == 'UHTR':
+        UHTR = variable_value
+        # Create new file
+        dat_file_name = 'UHTR' + str(UHTR) + '_' + 'airrate' + str(airrate)
+        file_name = sim_folder + 'UHTR' + str(UHTR) + '_' + 'airrate' + str(airrate) + '.dat'
+        fileID = open(file_name,'w')
+        i = 0
+
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Air_Flow_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_air_rate(fid, fileID, i, airrate)
+        # Loading everything before the key word ** Define heat loss (included)
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Proportional_Heat_Transfer_Coefficient**')
+        # Change the values for thermal conductivity
+        i = print_UHTR(fid, fileID, i, UHTR)
+
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Stop**')
+    
+        fileID.close()
+        
+    elif variable_type == 'Tinj':
+        Tinj = variable_value
+        # Create new file
+        dat_file_name = 'Tinj' + str(Tinj) + '_' + 'airrate' + str(airrate)
+        file_name = sim_folder + 'Tinj' + str(Tinj) + '_' + 'airrate' + str(airrate) + '.dat'
+        fileID = open(file_name,'w')
+        i = 0
+        
+        # Loading everything before the key word ** Define heat loss (included)
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Injection_Temperature**')
+        # Change the values for thermal conductivity
+        i = print_inject_temperature(fid, fileID, i, Tinj)
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Air_Flow_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_air_rate(fid, fileID, i, airrate)
+
+
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Stop**')
+    
+        fileID.close()
+        
+    elif variable_type == 'HEATR':
+        HEATR = variable_value
+        # Create new file
+        dat_file_name = 'HEATR' + str(HEATR) + '_' + 'airrate' + str(airrate)
+        file_name = sim_folder + 'HEATR' + str(HEATR) + '_' + 'airrate' + str(airrate) + '.dat'
+        fileID = open(file_name,'w')
+        i = 0
+        
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Air_Flow_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_air_rate(fid, fileID, i, airrate)
+        
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Constant_Heat_Transfer_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_HEATR(fid, fileID, i, HEATR)
+
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Stop**')
+    
+        fileID.close()
+        
+        
+    elif variable_type == 'HLOSSPROP':
+        HLOSSPROP = variable_value
+        # Create new file
+        dat_file_name = 'HLOSSPROP' + str(HLOSSPROP) + '_' + 'airrate' + str(airrate)
+        file_name = sim_folder + 'HLOSSPROP' + str(HLOSSPROP) + '_' + 'airrate' + str(airrate) + '.dat'
+        fileID = open(file_name,'w')
+        i = 0
+        
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Heatloss_Properties**')
+        # Change the values for the injected air flow rate
+        i = print_HLOSSPROP(fid, fileID, i, HLOSSPROP)
+        
+        # Loading everything before the Reaction
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Air_Flow_Rate**')
+        # Change the values for the injected air flow rate
+        i = print_air_rate(fid, fileID, i, airrate)
+        
+
+        i = copy_up_to_string(fid, fileID, i, '**Key_Word_for_Stop**')
+    
+        fileID.close()        
+        
+    else:
+        print('Invaliad variable tpye in this CMG_python file version')
+    # The dat file name here is only the name, without the .dat
+    return dat_file_name
 
 def run_dat_file(exe_path, cd_path, dat_file_name):
     '''
@@ -269,6 +586,112 @@ def find_keyword_result(fid, fileID, i, option):
         return i
 
 
+
+def result_summary(fid, fileID, i, option):
+    '''
+    This function helps to summarize all needed resutls in a list.
+    In the resultlist, the first string in each sublist represents time.
+    The remaining strings are the properties values, such as temperature, etc.
+    The length for each sublist may be different.
+    '''
+    if option == 1:
+        resultlist=[]
+        #flag_string = ['Temperature', '(Kelvin)']
+        flag = True
+        while flag:
+            i=find_keyword_result(fid, fileID, i, option)
+            if i == len(fid):
+                break
+            time=fid[i-2].split()[2]
+            if fid[i+2].split()[0:3] == ['All', 'values', 'are']:
+                temp=[fid[i+2].split()[3]]
+            else:
+                temp=fid[i+3].split()[2:len(fid[i+3])]
+        
+            resultlist.append([time, temp])
+        return resultlist
+    
+    if option == 2:
+        time = [0] #unit is hr
+        Ereact = [0] #unit is J
+        #flag_string = ['Energy', '(J   )']
+        flag = True
+        while flag:
+            i=find_keyword_result(fid, fileID, i, option)
+            if i == len(fid):
+                break
+            time.append(fid[i-1].split()[3])
+            if (fid[i+20].split()[0] == 'Energy')&(fid[i+12].split()[4:6] == ['Net', 'Reactions']):
+                Ereact.append(fid[i+20].split()[5])
+            else:
+                print('Please check the I/O of CMG, this is not matched with your code')
+            
+        return time, Ereact
+ 
+
+       
+
+def ignite(fid, fileID, threshold, option):
+    '''
+    This function helps to determine if a resultlist, such as the temperature profile, ignites or not.
+    resultlist is a input list including all the result_summary.
+    tempthreshold is a input for ignition determination.
+    This function returns the state of a case, ignition or extinction.
+    Attention: temperature threshold unit must be the same with result list. e.g.: fahrenheit.
+    '''
+    if option == 1:
+        tempthreshold = threshold
+        resultlist = result_summary(fid, fileID, 0, option)
+        resultlist_option2 = result_summary(fid, fileID, 0, 2)
+        rate_Ereact = []
+        rate_Ereact_max = []
+        for i in range(len(resultlist_option2[0])-1):
+            if (float(resultlist_option2[0][i+1]) - float(resultlist_option2[0][i])) == 0:
+                continue
+            rate_Ereact.append((float(resultlist_option2[1][i+1]) - float(resultlist_option2[1][i]))/(float(resultlist_option2[0][i+1]) - float(resultlist_option2[0][i])))
+
+        
+        status = 'extinction'
+        num_sublist=len(resultlist)
+        for i in range(num_sublist):
+            len_sublist=len(resultlist[i][1])
+            if len_sublist == 1:
+                if float(resultlist[i][1][0]) >= tempthreshold:
+                    status = 'ignition'
+                    rate_Ereact_max = (max(rate_Ereact))
+                else:
+                    rate_Ereact_max = (max(rate_Ereact))
+            else:
+                for j in range(1,len_sublist-1,1):
+                    if float(resultlist[i][1][j]) >= tempthreshold:
+                        status = 'ignition'
+                        rate_Ereact_max = (max(rate_Ereact))
+                    else:
+                        rate_Ereact_max = (max(rate_Ereact))
+                        
+        return status, rate_Ereact_max
+                        
+    if option == 2:
+        
+        resultlist = result_summary(fid, fileID, 0, option)
+        rate_Ereact = []
+        """
+        Following code calculates the rate of energy net reacted first.
+        Using the differential method: dEreact / dtime
+        """
+        for i in range(len(resultlist[0])-1):
+            if (float(resultlist_option2[0][i+1]) - float(resultlist_option2[0][i])) == 0:
+                continue
+            rate_Ereact.append((float(resultlist[1][i+1]) - float(resultlist[1][i]))/(float(resultlist[0][i+1]) - float(resultlist[0][i])))
+        
+        status = 'extinction'
+        num_sublist = len(rate_Ereact)
+        for i in range(num_sublist):
+            if rate_Ereact[i] >= threshold:
+                status = 'ignition'
+                
+        return status
+            
             
         
 """
@@ -402,6 +825,509 @@ def K_value_table(K_option, fileID):
 *KV5 0 0 
 
               """, file = fileID)
+        
+        
+
+def Fluid_definition(fluid_option):
+    if fluid_option == 1:
+        class Component:
+            def __init__(self, NAME, CMM, PCRIT, TCRIT, ACEN, AVG, BVG, AVISC, BVISC, CPG1, CPG2, CPG3, CPG4, MOLDEN, CP, CT1, SOLID_DEN, SOLID_CP):
+                self.NAME = NAME
+                self.CMM = CMM
+                self.PCRIT = PCRIT
+                self.TCRIT = TCRIT
+                self.ACEN = ACEN
+                self.AVG = AVG
+                self.BVG = BVG
+                self.AVISC = AVISC
+                self.BVISC = BVISC
+                self.CPG1 = CPG1
+                self.CPG2 = CPG2
+                self.CPG3 = CPG3
+                self.CPG4 = CPG4
+                self.MOLDEN = MOLDEN
+                self.CP = CP
+                self.CT1 = CT1
+                self.SOLID_DEN = SOLID_DEN
+                self.SOLID_CP = SOLID_CP
+
+    
+            def getNAME(self):
+                return self.NAME
+            def getCMM(self):
+                return self.CMM
+            def getPCRIT(self):
+                return self.PCRIT
+            def getTCRIT(self):
+                return self.TCRIT     
+            def getACEN(self):
+                return self.ACEN                 
+            def getAVG(self):
+                return self.AVG                 
+            def getBVG(self):
+                return self.BVG    
+            def getAVISC(self):
+                return self.AVISC     
+            def getBVISC(self):
+                return self.BVISC     
+            def getCPG1(self):
+                return self.CPG1          
+            def getCPG2(self):
+                return self.CPG2                 
+            def getCPG3(self):
+                return self.CPG3                 
+            def getCPG4(self):
+                return self.CPG4                 
+            def getMOLDEN(self):
+                return self.MOLDEN                 
+            def getCP(self):
+                return self.CP                 
+            def getCT1(self):
+                return self.CT1                 
+            def getSOLID_DEN(self):
+                return self.SOLID_DEN       
+            def getSOLID_CP(self):
+                return self.SOLID_CP
+
+            
+
+            def setNAME(self, value):
+                self.NAME = value
+            def setCMM(self, value):
+                self.CMM = value
+            def setPCRIT(self, value):
+                self.PCRIT = value
+            def setTCRIT(self, value):
+                self.TCRIT = value   
+            def setACEN(self, value):
+                self.ACEN = value               
+            def setAVG(self, value):
+                self.AVG = value              
+            def setBVG(self, value):
+                self.BVG = value 
+            def setAVISC(self, value):
+                self.AVISC = value   
+            def setBVISC(self, value):
+                self.BVISC = value   
+            def setCPG1(self, value):
+                self.CPG1 = value         
+            def setCPG2(self, value):
+                self.CPG2 = value               
+            def setCPG3(self, value):
+                self.CPG3 = value               
+            def setCPG4(self, value):
+                self.CPG4 = value               
+            def setMOLDEN(self, value):
+                self.MOLDEN = value               
+            def setCP(self, value):
+                self.CP = value               
+            def setCT1(self, value):
+                self.CT1 = value              
+            def setSOLID_DEN(self, value):
+                self.SOLID_DEN = value      
+            def setSOLID_CP(self, value):
+                self.SOLID_CP = value
+
+            
+
+        class Kinetics:
+            def __init__(self, NAME, REAC, PROD, FREQFAC, EACT, RENTH):
+                self.NAME = NAME
+                self.REAC = REAC
+                self.PROD = PROD
+                self.FREQFAC = FREQFAC
+                self.EACT = EACT
+                self.RENTH = RENTH
+
+            def getNAME(self):
+                return self.NAME  
+            def getREAC(self):
+                return self.REAC
+            def getPROD(self):
+                return self.PROD
+            def getFREQFAC(self):
+                return self.FREQFAC
+            def getEACT(self):
+                return self.EACT
+            def getRENTH(self):
+               return self.RENTH
+            
+            def setNAME(self, value):
+                self.NAME = value
+            def setREAC(self, value):
+                self.REAC = value
+            def setPROD(self, value):
+                self.PROD = value
+            def setFREQFAC(self, value):
+                self.FREQFAC = value
+            def setEACT(self, value):
+               self.EACT = value
+            def setRENTH(self, value):
+                self.RENTH = value
+            
+        
+        Component_map = dict()
+        Component_map["WATER"] = Component("WATER",[0.018],[21754.478],[647.4],[0.344],[1.7e-5],[1.116],[7.52e-5],[1384.86],[7.701],[4.595e-4],[2.521e-6],[-0.859e-9],[55520],[4.352331606e-7],[2.16e-4],[],[])
+        Component_map["HEVY OIL"] = Component("HEVY OIL",[0.675],[830.865],[887.6],[1.589],[7.503e-6],[1.102],[4.02e-4],[3400.89],[-34.081],[4.137],[-2.279e-3],[4.835e-7],[1464],[7.25388601e-7],[2.68e-4],[],[])
+        Component_map["LITE OIL"] = Component("LITE OIL",[0.157],[2107.56],[617.4],[0.449],[3.77e-6],[0.943],[4.02e-4],[3400.89],[-7.913],[0.961],[-5.29e-4],[1.123e-7],[5118],[7.25388601e-7],[5.11e-4],[],[])
+        Component_map["INRT GAS"] = Component("INRT GAS",[0.041],[3445.05],[126.5],[0.04],[3.213e-4],[0.702],[],[],[31.150],[-1.357e-2],[2.679e-5],[-1.167e-8],[],[],[],[],[])
+        Component_map["OXYGEN"] = Component("OXYGEN",[0.032],[5035.852],[154.8],[0.022],[3.355e-4],[0.721],[],[],[28.106],[-3.68e-6],[1.746e-5],[-1.065e-8],[],[],[],[],[])
+        Component_map["COKE"] = Component("COKE",[0.013],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[916.344, 0, 0],[16, 0])
+        
+        Kinetics_map = dict()
+        Kinetics_map["Cracking"] = Kinetics("Cracking",[0, 1, 0, 0, 0, 0],[0, 0, 2.154, 0, 0, 25.96],4.167e5,62802,93000)
+        Kinetics_map["HO burning"] = Kinetics("HO burning",[0, 1, 0, 0, 60.55, 0],[28.34, 0, 0, 51.53, 0, 0],4.4394e11,138281,29.1332e6)
+        Kinetics_map["LO burning"] = Kinetics("LO burning",[0, 0, 1, 0, 14.06, 0],[6.58, 0, 0, 11.96, 0, 0],4.4394e11,138281,6.7625e6)
+        Kinetics_map["Coke burning"] = Kinetics("Coke burning",[0, 0, 0, 0, 1.18, 1],[0.55, 0, 0, 1, 0, 0],6123.8,58615,523400)
+
+        
+    if fluid_option ==2:
+        
+        class Component:
+            def __init__(self, NAME, CMM, PCRIT, TCRIT, AVG, BVG, AVISC, BVISC, CPG1, CPG2, CPG3, CPG4, CPL1, CPL2, MASSDEN, CP, CT1, CT2, SOLID_DEN, SOLID_CP):
+                self.NAME = NAME
+                self.CMM = CMM
+                self.PCRIT = PCRIT
+                self.TCRIT = TCRIT
+                self.AVG = AVG
+                self.BVG = BVG
+                self.AVISC = AVISC
+                self.BVISC = BVISC
+                self.CPG1 = CPG1
+                self.CPG2 = CPG2
+                self.CPG3 = CPG3
+                self.CPG4 = CPG4
+                self.CPL1 = CPL1
+                self.CPL2 = CPL2
+                self.MASSDEN = MASSDEN
+                self.CP = CP
+                self.CT1 = CT1
+                self.CT2 = CT2
+                self.SOLID_DEN = SOLID_DEN
+                self.SOLID_CP = SOLID_CP
+
+    
+            def getNAME(self):
+                return self.NAME
+            def getCMM(self):
+                return self.CMM
+            def getPCRIT(self):
+                return self.PCRIT
+            def getTCRIT(self):
+                return self.TCRIT                  
+            def getAVG(self):
+                return self.AVG                 
+            def getBVG(self):
+                return self.BVG    
+            def getAVISC(self):
+                return self.AVISC     
+            def getBVISC(self):
+                return self.BVISC     
+            def getCPG1(self):
+                return self.CPG1          
+            def getCPG2(self):
+                return self.CPG2                 
+            def getCPG3(self):
+                return self.CPG3                 
+            def getCPG4(self):
+                return self.CPG4
+            def getCPL1(self):
+                return self.CPL1 
+            def getCPL2(self):
+                return self.CPL2            
+            def getMASSDEN(self):
+                return self.MASSDEN                 
+            def getCP(self):
+                return self.CP                 
+            def getCT1(self):
+                return self.CT1        
+            def getCT2(self):
+                return self.CT2   
+            def getSOLID_DEN(self):
+                return self.SOLID_DEN       
+            def getSOLID_CP(self):
+                return self.SOLID_CP
+
+            
+
+            def setNAME(self, value):
+                self.NAME = value
+            def setCMM(self, value):
+                self.CMM = value
+            def setPCRIT(self, value):
+                self.PCRIT = value
+            def setTCRIT(self, value):
+                self.TCRIT = value              
+            def setAVG(self, value):
+                self.AVG = value              
+            def setBVG(self, value):
+                self.BVG = value 
+            def setAVISC(self, value):
+                self.AVISC = value   
+            def setBVISC(self, value):
+                self.BVISC = value   
+            def setCPG1(self, value):
+                self.CPG1 = value         
+            def setCPG2(self, value):
+                self.CPG2 = value               
+            def setCPG3(self, value):
+                self.CPG3 = value               
+            def setCPG4(self, value):
+                self.CPG4 = value       
+            def setCPL1(self, value):
+                self.CPL1 = value               
+            def setCPL2(self, value):
+                self.CPL2 = value     
+            def setMASSDEN(self, value):
+                self.MASSDEN = value               
+            def setCP(self, value):
+                self.CP = value               
+            def setCT1(self, value):
+                self.CT1 = value 
+            def setCT2(self, value):
+                self.CT2 = value     
+            def setSOLID_DEN(self, value):
+                self.SOLID_DEN = value      
+            def setSOLID_CP(self, value):
+                self.SOLID_CP = value
+
+            
+
+        class Kinetics:
+            def __init__(self, NAME, REAC, PROD, RORDER, FREQFAC, EACT, RENTH):
+                self.NAME = NAME
+                self.REAC = REAC
+                self.PROD = PROD
+                self.RORDER = RORDER
+                self.FREQFAC = FREQFAC
+                self.EACT = EACT
+                self.RENTH = RENTH
+
+            def getNAME(self):
+                return self.NAME  
+            def getREAC(self):
+                return self.REAC
+            def getPROD(self):
+                return self.PROD
+            def getRORDER(self):
+                return self.RORDER
+            def getFREQFAC(self):
+                return self.FREQFAC
+            def getEACT(self):
+                return self.EACT
+            def getRENTH(self):
+               return self.RENTH
+            
+            def setNAME(self, value):
+                self.NAME = value
+            def setREAC(self, value):
+                self.REAC = value
+            def setPROD(self, value):
+                self.PROD = value
+            def setRORDER(self, value):
+                self.RORDER = value
+            def setFREQFAC(self, value):
+                self.FREQFAC = value
+            def setEACT(self, value):
+               self.EACT = value
+            def setRENTH(self, value):
+                self.RENTH = value
+        
+        
+        #(NAME, CMM, PCRIT, TCRIT, AVG, BVG, AVISC, BVISC, CPG1, CPG2, CPG3, CPG4, CPL1, CPL2, MASSDEN, CP, CT1, CT2, SOLID_DEN, SOLID_CP):
+        Component_map = dict()
+        Component_map["H2O"] = Component("H2O",[1.8e-2],[22083],[373.8],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0.001],[0],[0],[0],[],[])
+        Component_map["OIL"] = Component("OIL",[4.73e-1],[890],[171],[0.0001610891804],[0.7453161006],[1.426417368e-11],[10823.06574],[26.804420692906],[0.005649089963],[0.000095012314],[-0.000000054709],[524.8821790],[1.148635444845],[0.000999798],[7.25e-7],[0.00069242],[0],[],[])
+        Component_map["N2"] = Component("N2",[2.8e-2],[3392],[-147],[0.0003500869287],[0.6927470725],[],[],[30.956477056957],[-0.012716023994],[0.000025490143],[-0.000000011065],[0],[0],[],[],[],[],[],[])
+        Component_map["O2"] = Component("O2",[3.2e-2],[5033],[-118],[0.000362791571],[0.7120986013],[],[],[28.600167325729],[-0.003497011859],[0.000024399453],[-0.000000014928],[0],[0],[],[],[],[],[],[])
+        Component_map["CO2"] = Component("CO2",[4.4e-2],[7377],[31],[0.0001865724378],[0.7754816784],[],[],[19.474325955388],[0.075654731286],[-0.000060750197],[0.000000020109],[0],[0],[],[],[],[],[],[])
+        Component_map["CO"] = Component("CO",[2.8e-2],[3496],[-144],[0.0003315014585],[0.7037315714],[],[],[30.990187019402],[-0.01392019971],[0.00003014996],[-0.00000001415],[0],[0],[],[],[],[],[],[])
+        Component_map["Coke1"] = Component("Coke1",[1.88e-2],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[0.0014,0,0],[8.3908475,0.0439425])
+        Component_map["Coke2"] = Component("Coke2",[1.36e-2],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[0.0014,0,0],[6.96015,0.03645])
+        Component_map["Ci"] = Component("Ci",[2.08e-2],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[0.0014,0,0],[7.192155,0.037665])
+        
+        Kinetics_map = dict()
+        Kinetics_map["RXN1"] = Kinetics("RXN1",[0.00E+00, 1.00E+00, 0.00E+00, 9.50E+00, 0.00E+00, 0.00E+00, 0.00E+00, 0.00E+00, 0.00E+00],[22.292,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,2.0E+01,0.00E+00,0.00E+00],[0.00E+00,1.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00],7E5,1E5,3.98E+06)
+        Kinetics_map["RXN2"] = Kinetics("RXN2",[0.00E+00,0.00E+00,0.00E+00,1.50E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],[1.3815E+00,0.00E+00,0.00E+00,0.00E+00,0.75E+00,0.3181E+00,0.00E+00,0.00E+00,0.00E+00],[0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],1E6,1.14E5,6.28E5)
+        Kinetics_map["RXN3"] = Kinetics("RXN3",[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.3824E+00,0.00E+00],[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],1.6E6,8E4,0)
+        Kinetics_map["RXN4"] = Kinetics("RXN4",[0.00E+00,0.00E+00,0.00E+00,0.650000,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00],[0.239300,0.00E+00,0.00E+00,0.00E+00,0.565200,0.186200,0.00E+00,0.00E+00,0.00E+00],[0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00],4.5E6,1.4E5,2.72E5)
+        Kinetics_map["RXN5"] = Kinetics("RXN5",[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.9134615],[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,2.00E+00,0.00E+00,0.00E+00],5.334E4,5.099E4,0)
+        Kinetics_map["RXN6"] = Kinetics("RXN6",[0.00E+00,0.00E+00,0.00E+00,0.900000,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00],[0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,2.00E-01,0.00E+00,0.00E+00,0.00E+00],[0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00],1.621E10,100000,1.514E6)
+          
+
+
+    return Component_map, Kinetics_map
+
+
+   
+    
+
+
+def print_fluid(fileID, fluid_option, Component, Kinetics):
+    print('**  ==============  FLUID DEFINITIONS  ======================', file = fileID)
+    if fluid_option == 1:
+        print("""
+*MODEL 6 5 3   ** Number of noncondensible gases is numy-numx = 2
+** Number of solid components is ncomp-numy = 1
+              """, file = fileID)
+        print('*COMPNAME ',"\'"+Component["WATER"].getNAME()+"\'","\'"+Component["HEVY OIL"].getNAME()+"\'","\'"+Component["LITE OIL"].getNAME()+"\'","\'"+Component["INRT GAS"].getNAME()+"\'","\'"+Component["OXYGEN"].getNAME()+"\'","\'"+Component["COKE"].getNAME()+"\'", file = fileID)
+        print('*CMM ',*Component["WATER"].getCMM(),*Component["HEVY OIL"].getCMM(),*Component["LITE OIL"].getCMM(),*Component["INRT GAS"].getCMM(),*Component["OXYGEN"].getCMM(),*Component["COKE"].getCMM(), file = fileID)
+        print('*PCRIT ',*Component["WATER"].getPCRIT(),*Component["HEVY OIL"].getPCRIT(),*Component["LITE OIL"].getPCRIT(),*Component["INRT GAS"].getPCRIT(),*Component["OXYGEN"].getPCRIT(),*Component["COKE"].getPCRIT(), file = fileID)
+        print('*TCRIT ',*Component["WATER"].getTCRIT(),*Component["HEVY OIL"].getTCRIT(),*Component["LITE OIL"].getTCRIT(),*Component["INRT GAS"].getTCRIT(),*Component["OXYGEN"].getTCRIT(),*Component["COKE"].getTCRIT(), file = fileID)
+        print('*ACEN ',*Component["WATER"].getACEN(),*Component["HEVY OIL"].getACEN(),*Component["LITE OIL"].getACEN(),*Component["INRT GAS"].getACEN(),*Component["OXYGEN"].getACEN(),*Component["COKE"].getACEN(), file = fileID)
+        print('*AVG ',*Component["WATER"].getAVG(),*Component["HEVY OIL"].getAVG(),*Component["LITE OIL"].getAVG(),*Component["INRT GAS"].getAVG(),*Component["OXYGEN"].getAVG(),*Component["COKE"].getAVG(), file = fileID)
+        print('*BVG ',*Component["WATER"].getBVG(),*Component["HEVY OIL"].getBVG(),*Component["LITE OIL"].getBVG(),*Component["INRT GAS"].getBVG(),*Component["OXYGEN"].getBVG(),*Component["COKE"].getBVG(), file = fileID)
+        print('*AVISC ',*Component["WATER"].getAVISC(),*Component["HEVY OIL"].getAVISC(),*Component["LITE OIL"].getAVISC(),*Component["INRT GAS"].getAVISC(),*Component["OXYGEN"].getAVISC(),*Component["COKE"].getAVISC(), file = fileID)
+        print('*BVISC ',*Component["WATER"].getBVISC(),*Component["HEVY OIL"].getBVISC(),*Component["LITE OIL"].getBVISC(),*Component["INRT GAS"].getBVISC(),*Component["OXYGEN"].getBVISC(),*Component["COKE"].getBVISC(), file = fileID)
+        print('*CPG1 ',*Component["WATER"].getCPG1(),*Component["HEVY OIL"].getCPG1(),*Component["LITE OIL"].getCPG1(),*Component["INRT GAS"].getCPG1(),*Component["OXYGEN"].getCPG1(),*Component["COKE"].getCPG1(), file = fileID)
+        print('*CPG2 ',*Component["WATER"].getCPG2(),*Component["HEVY OIL"].getCPG2(),*Component["LITE OIL"].getCPG2(),*Component["INRT GAS"].getCPG2(),*Component["OXYGEN"].getCPG2(),*Component["COKE"].getCPG2(), file = fileID)
+        print('*CPG3 ',*Component["WATER"].getCPG3(),*Component["HEVY OIL"].getCPG3(),*Component["LITE OIL"].getCPG3(),*Component["INRT GAS"].getCPG3(),*Component["OXYGEN"].getCPG3(),*Component["COKE"].getCPG3(), file = fileID)
+        print('*CPG4 ',*Component["WATER"].getCPG4(),*Component["HEVY OIL"].getCPG4(),*Component["LITE OIL"].getCPG4(),*Component["INRT GAS"].getCPG4(),*Component["OXYGEN"].getCPG4(),*Component["COKE"].getCPG4(), file = fileID)
+        print('*MOLDEN ',*Component["WATER"].getMOLDEN(),*Component["HEVY OIL"].getMOLDEN(),*Component["LITE OIL"].getMOLDEN(),*Component["INRT GAS"].getMOLDEN(),*Component["OXYGEN"].getMOLDEN(),*Component["COKE"].getMOLDEN(), file = fileID)
+        print('*CP ',*Component["WATER"].getCP(),*Component["HEVY OIL"].getCP(),*Component["LITE OIL"].getCP(),*Component["INRT GAS"].getCP(),*Component["OXYGEN"].getCP(),*Component["COKE"].getCP(), file = fileID)
+        print('*CT1 ',*Component["WATER"].getCT1(),*Component["HEVY OIL"].getCT1(),*Component["LITE OIL"].getCT1(),*Component["INRT GAS"].getCT1(),*Component["OXYGEN"].getCT1(),*Component["COKE"].getCT1(), file = fileID)
+        print('*SOLID_DEN ',"\'"+Component["COKE"].getNAME()+"\'",*Component["WATER"].getSOLID_DEN(),*Component["HEVY OIL"].getSOLID_DEN(),*Component["LITE OIL"].getSOLID_DEN(),*Component["INRT GAS"].getSOLID_DEN(),*Component["OXYGEN"].getSOLID_DEN(),*Component["COKE"].getSOLID_DEN(), file = fileID)
+        print('*SOLID_CP ',"\'"+Component["COKE"].getNAME()+"\'",*Component["WATER"].getSOLID_CP(),*Component["HEVY OIL"].getSOLID_CP(),*Component["LITE OIL"].getSOLID_CP(),*Component["INRT GAS"].getSOLID_CP(),*Component["OXYGEN"].getSOLID_CP(),*Component["COKE"].getSOLID_CP(), file = fileID)
+        
+        print('**Reactions', file = fileID)
+        print('**-----------', file = fileID)
+        
+        print('** Cracking:  heavy oil -> light oil + coke (50/50 by mass)', file = fileID)
+        print('*STOREAC ',Kinetics["Cracking"].getREAC()[0],'',Kinetics["Cracking"].getREAC()[1],'',Kinetics["Cracking"].getREAC()[2],'',Kinetics["Cracking"].getREAC()[3],'',Kinetics["Cracking"].getREAC()[4],'',Kinetics["Cracking"].getREAC()[5], file = fileID)
+        print('*STOPROD ',Kinetics["Cracking"].getPROD()[0],'',Kinetics["Cracking"].getPROD()[1],'',Kinetics["Cracking"].getPROD()[2],'',Kinetics["Cracking"].getPROD()[3],'',Kinetics["Cracking"].getPROD()[4],'',Kinetics["Cracking"].getPROD()[5], file = fileID)
+        print('*FREQFAC ',Kinetics["Cracking"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["Cracking"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["Cracking"].getRENTH(), file = fileID)
+        
+        print('** Light oil burning:  light oil + o2 -> water + inert gas + energy', file = fileID)
+        print('*STOREAC ',Kinetics["LO burning"].getREAC()[0],'',Kinetics["LO burning"].getREAC()[1],'',Kinetics["LO burning"].getREAC()[2],'',Kinetics["LO burning"].getREAC()[3],'',Kinetics["LO burning"].getREAC()[4],'',Kinetics["LO burning"].getREAC()[5], file = fileID)
+        print('*STOPROD ',Kinetics["LO burning"].getPROD()[0],'',Kinetics["LO burning"].getPROD()[1],'',Kinetics["LO burning"].getPROD()[2],'',Kinetics["LO burning"].getPROD()[3],'',Kinetics["LO burning"].getPROD()[4],'',Kinetics["LO burning"].getPROD()[5], file = fileID)
+        print('*FREQFAC ',Kinetics["LO burning"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["LO burning"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["LO burning"].getRENTH(), file = fileID)
+        
+        print('** Heavy oil burning:  heavy oil + o2 -> water + inert gas + energy', file = fileID)
+        print('*STOREAC ',Kinetics["HO burning"].getREAC()[0],'',Kinetics["HO burning"].getREAC()[1],'',Kinetics["HO burning"].getREAC()[2],'',Kinetics["HO burning"].getREAC()[3],'',Kinetics["HO burning"].getREAC()[4],'',Kinetics["HO burning"].getREAC()[5], file = fileID)
+        print('*STOPROD ',Kinetics["HO burning"].getPROD()[0],'',Kinetics["HO burning"].getPROD()[1],'',Kinetics["HO burning"].getPROD()[2],'',Kinetics["HO burning"].getPROD()[3],'',Kinetics["HO burning"].getPROD()[4],'',Kinetics["HO burning"].getPROD()[5], file = fileID)
+        print('*FREQFAC ',Kinetics["HO burning"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["HO burning"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["HO burning"].getRENTH(), file = fileID)
+        
+        print('** Coke oil burning:  coke oil + o2 -> water + inert gas + energy', file = fileID)
+        print('*STOREAC ',Kinetics["Coke burning"].getREAC()[0],'',Kinetics["Coke burning"].getREAC()[1],'',Kinetics["Coke burning"].getREAC()[2],'',Kinetics["Coke burning"].getREAC()[3],'',Kinetics["Coke burning"].getREAC()[4],'',Kinetics["Coke burning"].getREAC()[5], file = fileID)
+        print('*STOPROD ',Kinetics["Coke burning"].getPROD()[0],'',Kinetics["Coke burning"].getPROD()[1],'',Kinetics["Coke burning"].getPROD()[2],'',Kinetics["Coke burning"].getPROD()[3],'',Kinetics["Coke burning"].getPROD()[4],'',Kinetics["Coke burning"].getPROD()[5], file = fileID)
+        print('*FREQFAC ',Kinetics["Coke burning"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["Coke burning"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["Coke burning"].getRENTH(), file = fileID)
+
+        
+    if fluid_option == 2:
+        print("""
+*MODEL 9 6 2 
+** Number of noncondensible gases is numy-numx = 4
+** Number of solid components is ncomp-numy = 4
+
+              """, file = fileID)
+
+        print('*COMPNAME ',"\'"+Component["H2O"].getNAME()+"\'","\'"+Component["OIL"].getNAME()+"\'","\'"+Component["N2"].getNAME()+"\'","\'"+Component["O2"].getNAME()+"\'","\'"+Component["CO2"].getNAME()+"\'","\'"+Component["CO"].getNAME()+"\'","\'"+Component["Coke1"].getNAME()+"\'","\'"+Component["Coke2"].getNAME()+"\'","\'"+Component["Ci"].getNAME()+"\'", file = fileID)
+        print('*CMM ',*Component["H2O"].getCMM(),*Component["OIL"].getCMM(),*Component["N2"].getCMM(),*Component["O2"].getCMM(),*Component["CO2"].getCMM(),*Component["CO"].getCMM(),*Component["Coke1"].getCMM(),*Component["Coke2"].getCMM(),*Component["Ci"].getCMM(), file = fileID)
+        print('*PCRIT ',*Component["H2O"].getPCRIT(),*Component["OIL"].getPCRIT(),*Component["N2"].getPCRIT(),*Component["O2"].getPCRIT(),*Component["CO2"].getPCRIT(),*Component["CO"].getPCRIT(),*Component["Coke1"].getPCRIT(),*Component["Coke2"].getPCRIT(),*Component["Ci"].getPCRIT(), file = fileID)
+        print('*TCRIT ',*Component["H2O"].getTCRIT(),*Component["OIL"].getTCRIT(),*Component["N2"].getTCRIT(),*Component["O2"].getTCRIT(),*Component["CO2"].getTCRIT(),*Component["CO"].getTCRIT(),*Component["Coke1"].getTCRIT(),*Component["Coke2"].getTCRIT(),*Component["Ci"].getTCRIT(), file = fileID)
+      
+        print('*AVG ',*Component["H2O"].getAVG(),*Component["OIL"].getAVG(),*Component["N2"].getAVG(),*Component["O2"].getAVG(),*Component["CO2"].getAVG(),*Component["CO"].getAVG(),*Component["Coke1"].getAVG(),*Component["Coke2"].getAVG(),*Component["Ci"].getAVG(), file = fileID)
+        print('*BVG ',*Component["H2O"].getBVG(),*Component["OIL"].getBVG(),*Component["N2"].getBVG(),*Component["O2"].getBVG(),*Component["CO2"].getBVG(),*Component["CO"].getBVG(),*Component["Coke1"].getBVG(),*Component["Coke2"].getBVG(),*Component["Ci"].getBVG(), file = fileID)
+        #print('*AVISC ',*Component["H2O"].getAVISC(),*Component["OIL"].getAVISC(),*Component["N2"].getAVISC(),*Component["O2"].getAVISC(),*Component["CO2"].getAVISC(),*Component["CO"].getAVISC(),*Component["Coke1"].getAVISC(),*Component["Coke2"].getAVISC(),*Component["Ci"].getAVISC(), file = fileID)
+        #print('*BVISC ',*Component["H2O"].getBVISC(),*Component["OIL"].getBVISC(),*Component["N2"].getBVISC(),*Component["O2"].getBVISC(),*Component["CO2"].getBVISC(),*Component["CO"].getBVISC(),*Component["Coke1"].getBVISC(),*Component["Coke2"].getBVISC(),*Component["Ci"].getBVISC(), file = fileID)
+        print('*CPG1 ',*Component["H2O"].getCPG1(),*Component["OIL"].getCPG1(),*Component["N2"].getCPG1(),*Component["O2"].getCPG1(),*Component["CO2"].getCPG1(),*Component["CO"].getCPG1(),*Component["Coke1"].getCPG1(),*Component["Coke2"].getCPG1(),*Component["Ci"].getCPG1(), file = fileID)
+        print('*CPG2 ',*Component["H2O"].getCPG2(),*Component["OIL"].getCPG2(),*Component["N2"].getCPG2(),*Component["O2"].getCPG2(),*Component["CO2"].getCPG2(),*Component["CO"].getCPG2(),*Component["Coke1"].getCPG2(),*Component["Coke2"].getCPG2(),*Component["Ci"].getCPG2(), file = fileID)
+        print('*CPG3 ',*Component["H2O"].getCPG3(),*Component["OIL"].getCPG3(),*Component["N2"].getCPG3(),*Component["O2"].getCPG3(),*Component["CO2"].getCPG3(),*Component["CO"].getCPG3(),*Component["Coke1"].getCPG3(),*Component["Coke2"].getCPG3(),*Component["Ci"].getCPG3(), file = fileID)
+        print('*CPG4 ',*Component["H2O"].getCPG4(),*Component["OIL"].getCPG4(),*Component["N2"].getCPG4(),*Component["O2"].getCPG4(),*Component["CO2"].getCPG4(),*Component["CO"].getCPG4(),*Component["Coke1"].getCPG4(),*Component["Coke2"].getCPG4(),*Component["Ci"].getCPG4(), file = fileID)
+        print('*CPL1 ',*Component["H2O"].getCPL1(),*Component["OIL"].getCPL1(),*Component["N2"].getCPL1(),*Component["O2"].getCPL1(),*Component["CO2"].getCPL1(),*Component["CO"].getCPL1(),*Component["Coke1"].getCPL1(),*Component["Coke2"].getCPL1(),*Component["Ci"].getCPL1(), file = fileID)
+        print('*CPL2 ',*Component["H2O"].getCPL2(),*Component["OIL"].getCPL2(),*Component["N2"].getCPL2(),*Component["O2"].getCPL2(),*Component["CO2"].getCPL2(),*Component["CO"].getCPL2(),*Component["Coke1"].getCPL2(),*Component["Coke2"].getCPL2(),*Component["Ci"].getCPL2(), file = fileID)
+        
+        print("""
+*HVAPR 0 0 
+*EV 0 0 
+              """, file = fileID)
+        
+        print('*MASSDEN ',*Component["H2O"].getMASSDEN(),*Component["OIL"].getMASSDEN(),*Component["N2"].getMASSDEN(),*Component["O2"].getMASSDEN(),*Component["CO2"].getMASSDEN(),*Component["CO"].getMASSDEN(),*Component["Coke1"].getMASSDEN(),*Component["Coke2"].getMASSDEN(),*Component["Ci"].getMASSDEN(), file = fileID)
+        print('*CP ',*Component["H2O"].getCP(),*Component["OIL"].getCP(),*Component["N2"].getCP(),*Component["O2"].getCP(),*Component["CO2"].getCP(),*Component["CO"].getCP(),*Component["Coke1"].getCP(),*Component["Coke2"].getCP(),*Component["Ci"].getCP(), file = fileID)
+        print('*CT1 ',*Component["H2O"].getCT1(),*Component["OIL"].getCT1(),*Component["N2"].getCT1(),*Component["O2"].getCT1(),*Component["CO2"].getCT1(),*Component["CO"].getCT1(),*Component["Coke1"].getCT1(),*Component["Coke2"].getCT1(),*Component["Ci"].getCT1(), file = fileID)
+        print('*CT2 ',*Component["H2O"].getCT2(),*Component["OIL"].getCT2(),*Component["N2"].getCT2(),*Component["O2"].getCT2(),*Component["CO2"].getCT2(),*Component["CO"].getCT2(),*Component["Coke1"].getCT2(),*Component["Coke2"].getCT2(),*Component["Ci"].getCT2(), file = fileID)
+        print('*SOLID_DEN ',"\'"+Component["Coke1"].getNAME()+"\'",*Component["Coke1"].getSOLID_DEN(), file = fileID)
+        print('*SOLID_CP ',"\'"+Component["Coke1"].getNAME()+"\'",*Component["Coke1"].getSOLID_CP(), file = fileID)
+        print('*SOLID_DEN ',"\'"+Component["Coke2"].getNAME()+"\'",*Component["Coke2"].getSOLID_DEN(), file = fileID)
+        print('*SOLID_CP ',"\'"+Component["Coke2"].getNAME()+"\'",*Component["Coke2"].getSOLID_CP(), file = fileID)
+        print('*SOLID_DEN ',"\'"+Component["Ci"].getNAME()+"\'",*Component["Ci"].getSOLID_DEN(), file = fileID)
+        print('*SOLID_CP ',"\'"+Component["Ci"].getNAME()+"\'",*Component["Ci"].getSOLID_CP(), file = fileID)
+        
+        print("""
+*VISCTABLE
+10      0    100000
+80      0      2084
+100     0       580
+1000    0         1
+              """, file = fileID)
+        
+        print('**Reactions', file = fileID)
+        print('**-----------', file = fileID)
+        
+        print('**RXN1: Oil + 6O2 > 19Coke1 + 23.55555H2O', file = fileID)
+        print('*STOREAC ',Kinetics["RXN1"].getREAC()[0],'',Kinetics["RXN1"].getREAC()[1],'',Kinetics["RXN1"].getREAC()[2],'',Kinetics["RXN1"].getREAC()[3],'',Kinetics["RXN1"].getREAC()[4],'',Kinetics["RXN1"].getREAC()[5],'',Kinetics["RXN1"].getREAC()[6],'',Kinetics["RXN1"].getREAC()[7],'',Kinetics["RXN1"].getREAC()[8], file = fileID)
+        print('*STOPROD ',Kinetics["RXN1"].getPROD()[0],'',Kinetics["RXN1"].getPROD()[1],'',Kinetics["RXN1"].getPROD()[2],'',Kinetics["RXN1"].getPROD()[3],'',Kinetics["RXN1"].getPROD()[4],'',Kinetics["RXN1"].getPROD()[5],'',Kinetics["RXN1"].getPROD()[6],'',Kinetics["RXN1"].getPROD()[7],'',Kinetics["RXN1"].getPROD()[8], file = fileID)
+        print('*RORDER ',Kinetics["RXN1"].getRORDER()[0],'',Kinetics["RXN1"].getRORDER()[1],'',Kinetics["RXN1"].getRORDER()[2],'',Kinetics["RXN1"].getRORDER()[3],'',Kinetics["RXN1"].getRORDER()[4],'',Kinetics["RXN1"].getRORDER()[5],'',Kinetics["RXN1"].getRORDER()[6],'',Kinetics["RXN1"].getRORDER()[7],'',Kinetics["RXN1"].getRORDER()[8], file = fileID)
+        print('*FREQFAC ',Kinetics["RXN1"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["RXN1"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["RXN1"].getRENTH(), file = fileID)
+        print("*O2PP 'O2'", file = fileID)
+        
+        print('**RXN2: **Coke1 + 1.5O2 > CO2 + 0.5CO + 0.5H2O', file = fileID)
+        print('*STOREAC ',Kinetics["RXN2"].getREAC()[0],'',Kinetics["RXN2"].getREAC()[1],'',Kinetics["RXN2"].getREAC()[2],'',Kinetics["RXN2"].getREAC()[3],'',Kinetics["RXN2"].getREAC()[4],'',Kinetics["RXN2"].getREAC()[5],'',Kinetics["RXN2"].getREAC()[6],'',Kinetics["RXN2"].getREAC()[7],'',Kinetics["RXN2"].getREAC()[8], file = fileID)
+        print('*STOPROD ',Kinetics["RXN2"].getPROD()[0],'',Kinetics["RXN2"].getPROD()[1],'',Kinetics["RXN2"].getPROD()[2],'',Kinetics["RXN2"].getPROD()[3],'',Kinetics["RXN2"].getPROD()[4],'',Kinetics["RXN2"].getPROD()[5],'',Kinetics["RXN2"].getPROD()[6],'',Kinetics["RXN2"].getPROD()[7],'',Kinetics["RXN2"].getPROD()[8], file = fileID)
+        print('*RORDER ',Kinetics["RXN2"].getRORDER()[0],'',Kinetics["RXN2"].getRORDER()[1],'',Kinetics["RXN2"].getRORDER()[2],'',Kinetics["RXN2"].getRORDER()[3],'',Kinetics["RXN2"].getRORDER()[4],'',Kinetics["RXN2"].getRORDER()[5],'',Kinetics["RXN2"].getRORDER()[6],'',Kinetics["RXN2"].getRORDER()[7],'',Kinetics["RXN2"].getRORDER()[8], file = fileID)
+        print('*FREQFAC ',Kinetics["RXN2"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["RXN2"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["RXN2"].getRENTH(), file = fileID)
+        print("*O2PP 'O2'", file = fileID)
+        
+        print('**RXN3: Coke1 > 1.032608Coke2', file = fileID)
+        print('*STOREAC ',Kinetics["RXN3"].getREAC()[0],'',Kinetics["RXN3"].getREAC()[1],'',Kinetics["RXN3"].getREAC()[2],'',Kinetics["RXN3"].getREAC()[3],'',Kinetics["RXN3"].getREAC()[4],'',Kinetics["RXN3"].getREAC()[5],'',Kinetics["RXN3"].getREAC()[6],'',Kinetics["RXN3"].getREAC()[7],'',Kinetics["RXN3"].getREAC()[8], file = fileID)
+        print('*STOPROD ',Kinetics["RXN3"].getPROD()[0],'',Kinetics["RXN3"].getPROD()[1],'',Kinetics["RXN3"].getPROD()[2],'',Kinetics["RXN3"].getPROD()[3],'',Kinetics["RXN3"].getPROD()[4],'',Kinetics["RXN3"].getPROD()[5],'',Kinetics["RXN3"].getPROD()[6],'',Kinetics["RXN3"].getPROD()[7],'',Kinetics["RXN3"].getPROD()[8], file = fileID)
+        print('*RORDER ',Kinetics["RXN3"].getRORDER()[0],'',Kinetics["RXN3"].getRORDER()[1],'',Kinetics["RXN3"].getRORDER()[2],'',Kinetics["RXN3"].getRORDER()[3],'',Kinetics["RXN3"].getRORDER()[4],'',Kinetics["RXN3"].getRORDER()[5],'',Kinetics["RXN3"].getRORDER()[6],'',Kinetics["RXN3"].getRORDER()[7],'',Kinetics["RXN3"].getRORDER()[8], file = fileID)
+        print('*FREQFAC ',Kinetics["RXN3"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["RXN3"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["RXN3"].getRENTH(), file = fileID)
+        print("**O2PP 'O2'", file = fileID)
+        
+        print('**RXN4: Coke2 + 1.2O2 > 0.4CO + 1CO2', file = fileID)
+        print('*STOREAC ',Kinetics["RXN4"].getREAC()[0],'',Kinetics["RXN4"].getREAC()[1],'',Kinetics["RXN4"].getREAC()[2],'',Kinetics["RXN4"].getREAC()[3],'',Kinetics["RXN4"].getREAC()[4],'',Kinetics["RXN4"].getREAC()[5],'',Kinetics["RXN4"].getREAC()[6],'',Kinetics["RXN4"].getREAC()[7],'',Kinetics["RXN4"].getREAC()[8], file = fileID)
+        print('*STOPROD ',Kinetics["RXN4"].getPROD()[0],'',Kinetics["RXN4"].getPROD()[1],'',Kinetics["RXN4"].getPROD()[2],'',Kinetics["RXN4"].getPROD()[3],'',Kinetics["RXN4"].getPROD()[4],'',Kinetics["RXN4"].getPROD()[5],'',Kinetics["RXN4"].getPROD()[6],'',Kinetics["RXN4"].getPROD()[7],'',Kinetics["RXN4"].getPROD()[8], file = fileID)
+        print('*RORDER ',Kinetics["RXN4"].getRORDER()[0],'',Kinetics["RXN4"].getRORDER()[1],'',Kinetics["RXN4"].getRORDER()[2],'',Kinetics["RXN4"].getRORDER()[3],'',Kinetics["RXN4"].getRORDER()[4],'',Kinetics["RXN4"].getRORDER()[5],'',Kinetics["RXN4"].getRORDER()[6],'',Kinetics["RXN4"].getRORDER()[7],'',Kinetics["RXN4"].getRORDER()[8], file = fileID)
+        print('*FREQFAC ',Kinetics["RXN4"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["RXN4"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["RXN4"].getRENTH(), file = fileID)
+        print("*O2PP 'O2'", file = fileID)
+        
+        print('**RXN5: Coke1 > 0.9134615 Ci', file = fileID)
+        print('*STOREAC ',Kinetics["RXN5"].getREAC()[0],'',Kinetics["RXN5"].getREAC()[1],'',Kinetics["RXN5"].getREAC()[2],'',Kinetics["RXN5"].getREAC()[3],'',Kinetics["RXN5"].getREAC()[4],'',Kinetics["RXN5"].getREAC()[5],'',Kinetics["RXN5"].getREAC()[6],'',Kinetics["RXN5"].getREAC()[7],'',Kinetics["RXN5"].getREAC()[8], file = fileID)
+        print('*STOPROD ',Kinetics["RXN5"].getPROD()[0],'',Kinetics["RXN5"].getPROD()[1],'',Kinetics["RXN5"].getPROD()[2],'',Kinetics["RXN5"].getPROD()[3],'',Kinetics["RXN5"].getPROD()[4],'',Kinetics["RXN5"].getPROD()[5],'',Kinetics["RXN5"].getPROD()[6],'',Kinetics["RXN5"].getPROD()[7],'',Kinetics["RXN5"].getPROD()[8], file = fileID)
+        print('*RORDER ',Kinetics["RXN5"].getRORDER()[0],'',Kinetics["RXN5"].getRORDER()[1],'',Kinetics["RXN5"].getRORDER()[2],'',Kinetics["RXN5"].getRORDER()[3],'',Kinetics["RXN5"].getRORDER()[4],'',Kinetics["RXN5"].getRORDER()[5],'',Kinetics["RXN5"].getRORDER()[6],'',Kinetics["RXN5"].getRORDER()[7],'',Kinetics["RXN5"].getRORDER()[8], file = fileID)
+        print('*FREQFAC ',Kinetics["RXN5"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["RXN5"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["RXN5"].getRENTH(), file = fileID)
+        print("**O2PP 'O2'", file = fileID)
+        
+        print('**RXN6: 1Ci + 0.9O2 > 0.2CO + 1CO2', file = fileID)
+        print('*STOREAC ',Kinetics["RXN6"].getREAC()[0],'',Kinetics["RXN6"].getREAC()[1],'',Kinetics["RXN6"].getREAC()[2],'',Kinetics["RXN6"].getREAC()[3],'',Kinetics["RXN6"].getREAC()[4],'',Kinetics["RXN6"].getREAC()[5],'',Kinetics["RXN6"].getREAC()[6],'',Kinetics["RXN6"].getREAC()[7],'',Kinetics["RXN6"].getREAC()[8], file = fileID)
+        print('*STOPROD ',Kinetics["RXN6"].getPROD()[0],'',Kinetics["RXN6"].getPROD()[1],'',Kinetics["RXN6"].getPROD()[2],'',Kinetics["RXN6"].getPROD()[3],'',Kinetics["RXN6"].getPROD()[4],'',Kinetics["RXN6"].getPROD()[5],'',Kinetics["RXN6"].getPROD()[6],'',Kinetics["RXN6"].getPROD()[7],'',Kinetics["RXN6"].getPROD()[8], file = fileID)
+        print('*RORDER ',Kinetics["RXN6"].getRORDER()[0],'',Kinetics["RXN6"].getRORDER()[1],'',Kinetics["RXN6"].getRORDER()[2],'',Kinetics["RXN6"].getRORDER()[3],'',Kinetics["RXN6"].getRORDER()[4],'',Kinetics["RXN6"].getRORDER()[5],'',Kinetics["RXN6"].getRORDER()[6],'',Kinetics["RXN6"].getRORDER()[7],'',Kinetics["RXN6"].getRORDER()[8], file = fileID)
+        print('*FREQFAC ',Kinetics["RXN6"].getFREQFAC(), file = fileID)
+        print('*EACT ',Kinetics["RXN6"].getEACT(), file = fileID)
+        print('*RENTH ',Kinetics["RXN6"].getRENTH(), file = fileID)
+        print("**O2PP 'O2'", file = fileID)
+        
+
+
 
 
 def print_IO_control(fileID, IO_option):
@@ -475,53 +1401,7 @@ RESULTS SIMULATOR STARS 201710
               
               """, file = fileID)
         
-    if IO_option == 3:
-        print("""
-*INUNIT 	*LAB
-*OUTUNIT 	*LAB
-*WPRN *GRID 5
-*WPRN *ITER 5
 
-
-*OUTPRN *GRID *ALL
-*OUTPRN *WELL *ALL
-*OUTPRN *ITER *BRIEF **
-*OUTPRN *RES *ALL
-
-**WPRN *GRID 5
-**WPRN *ITER 5
-*WSRF *GRID *TIME
-*WSRF *WELL *TIME
-*OUTSRF *WELL *MOLE *COMPONENT *ALL
-*OUTSRF GRID TEMP PRES X Y SOLCONC MOLE
-
-*OUTSRF *SPECIAL MATBAL CURRENT 'O2'
-*OUTSRF *SPECIAL MATBAL CURRENT 'Coke1'
-*OUTSRF *SPECIAL MATBAL CURRENT 'CO'
-*OUTSRF *SPECIAL MATBAL CURRENT 'CO2'
-*OUTSRF *SPECIAL MATBAL CURRENT 'Coke2'
-*OUTSRF *SPECIAL MATBAL CURRENT 'OIL'
-*OUTSRF *SPECIAL MATBAL CURRENT 'H2O'
-*OUTSRF *SPECIAL MATBAL REACTION 'N2'
-*OUTSRF *SPECIAL MATBAL REACTION 'O2'
-*OUTSRF *SPECIAL MATBAL REACTION 'Coke1'
-*OUTSRF *SPECIAL MATBAL REACTION 'CO'
-*OUTSRF *SPECIAL MATBAL REACTION 'CO2'
-*OUTSRF *SPECIAL MATBAL REACTION 'Coke2'
-*OUTSRF *SPECIAL MATBAL REACTION 'OIL'
-*OUTSRF *SPECIAL MATBAL REACTION 'H2O'
-*OUTSRF *SPECIAL MATBAL REACTION ENERGY
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'N2'
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'O2'
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'H2O'
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'CO'
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'CO2'
-*OUTSRF *SPECIAL AVGVAR TEMP
-*INTERRUPT *STOP         
-              
-              """, file = fileID)
-        
-        
 
 def print_grid(fileID, grid_option):
     print('**  ==============  GRID AND RESERVOIR DEFINITION  =================', file = fileID)
@@ -916,6 +1796,207 @@ def print_heater(fileID, heater_option):
 *AUTOHEATER *ON 2 1 1:11              
 
               """, file = fileID)
+        
+
+### BEGIN STARS BINARY READER
+class STARSOutputFile:
+    '''
+    Class to hold output files from STARS
+    '''
+    def __init__(self, input_file_base, reaction_type = 'BO'):
+    #def __init__(self, input_file_base, reaction_type = 'MURAT'):
+
+        '''
+        Input:
+            input_file_base - base of file for the simulation
+
+        '''
+
+        # Open STARS output files
+        FID = [line.decode('utf-8', errors='ignore') for line in open(input_file_base + '.irf', 'rb')]
+        FID_bin = open(input_file_base + '.mrf', 'rb')
+
+        # Select number of species
+        #   NEED TO GENERALIZE ON FUTURE ITERATIONS
+        if reaction_type == 'MURAT':
+            numSPHIST = 22 # MURAT
+        elif reaction_type == 'BO':
+            numSPHIST = 18 # BO
+        else:
+            raise Exception('Invalid reaction type')
+        num_grids = 22
+
+        # Initialize variables/objects for parsing data
+        i = 0
+        self.UNIT = {} # Create units dictionary
+        self.COMP = {} # Compositions dictionary
+        self.TIME = {} # Time dictionary
+        self.GRID = {} # Grid dictionary
+        self.GRID['TEMP'] = []
+        self.SP = {}
+        self.SP['VAL'] = []
+        self.SPHIST = {}
+
+        self.TIME['VECT'] = []
+        self.TIME['CHR'] = []
+        self.TIME['CHR_UNIT'] = []
+
+        self.REC = {}
+        REC_list = ['WELL-REC', 'LAYER-REC', 'GROUP-REC', 'SECTOR-REC', 'RSTSPEC01-REC', 'RSTSPEC02-REC', 'RSTSPEC03-REC',
+            'RSTSPEC04-REC', 'RSTSPEC05-REC', 'RSTSPEC06-REC', 'RSTSPEC07-REC', 'RSTSPEC08-REC', 'RSTSPEC09-REC',
+            'RSTSPEC10-REC', 'RSTSPEC11-REC', 'RSTSPEC12-REC', 'RSTSPEC13-REC', 'RSTSPEC14-REC', 'RSTSPEC15-REC',
+            'RSTSPEC16-REC', 'RSTSPEC17-REC', 'RSTSPEC18-REC', 'RSTSPEC19-REC', 'RSTSPEC20-REC', 'RSTSPEC21-REC',
+            'RSTSPEC22-REC']
+        
+        skip_list = ['WELL-ARRAY', 'LAYER-ARRAY', 'GROUP-ARRAY']
+
+        # Iterate over lines of file
+        while i < len(FID):
+            line_split = FID[i].split()
+            
+            # Parse case-by-case quantities
+            if line_split[0] == 'INTERNAL-UNIT-TABLE':
+                i+=1 
+                self.UNIT['INT'] = [str(FID[i+j].split()[1]) for j in range(21)]
+                self.UNIT['DESCP'] = [str(FID[i+j].split()[3]) for j in range(21)]
+                i+=21 
+                
+            elif line_split[0] == 'OUTPUT-UNIT-TABLE':
+                i+=1
+                self.UNIT['OUT'] = [str(FID[i+j].split()[1]) for j in range(21)]
+                i+=21
+
+            elif line_split[0] == 'NCOMP':
+                self.COMP['NUM'] = int(line_split[1])
+                i+=1
+
+            elif line_split[0] == 'COMPNAME':
+                i+=1
+                self.COMP['NAME'] = [str(FID[i+j].split()[1]).replace("'","") for j in range(self.COMP['NUM'])]
+                i+=self.COMP['NUM']
+
+            elif line_split[0] == 'COMP-PHASE-TEMPLATE':
+                i+=1
+                self.COMP['TEMPL'] = [str(FID[i+j].split()[2]) for j in range(self.COMP['NUM'])]
+                i+=self.COMP['NUM']
+                
+            elif line_split[0] == 'TIME' and 'SPEC-HISTORY' in [FID[i-1].split()[0], FID[i-3].split()[0]]:
+                self.TIME['VECT'].append(line_split[1:])
+                i+=1
+                
+            elif line_split[0] == 'TIMCHR':
+                self.TIME['CHR'].append(line_split[2])
+                self.TIME['CHR_UNIT'].append(line_split[3].replace("'",""))
+                i+=1
+            
+
+            # Parse grid values from binary file
+            elif line_split[0] == 'GRID':
+                item_num = int(FID[i].split()[2])
+                for j in range(item_num):
+                    num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
+                    _ = np.fromfile(FID_bin, np.int8, count=np.asscalar(num_bytes)).byteswap() 
+                _, i = self.parse_nobin(FID, i)
+
+            elif line_split[0] == 'GRID-VALUE':
+                props_list, i = self.parse_nobin(FID, i)
+                print('self.parse_nobin is', self.parse_nobin(FID, i))
+                for prop in props_list[3:]:
+                    num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
+                    print('num_bytes is', num_bytes)
+                    print('prop is', prop)
+                    print('np.asscalar(num_bytes) is', np.asscalar(num_bytes))
+                    if prop == 'TEMP':
+                        grid_temp = np.fromfile(FID_bin, np.float64, count=num_grids).byteswap()
+                        self.GRID['TEMP'].append(grid_temp)
+                    else:
+                        _ = np.fromfile(FID_bin, np.int8, count=np.asscalar(num_bytes)).byteswap()                        
+
+
+
+            # Parse species names and values from binary file
+            elif line_split[0] == 'SPHIST-NAMES':
+                self.SPHIST['NUM'] = []
+                self.SPHIST['NAME'] = []
+                i+=1
+                for j in range(numSPHIST):
+                    line_split = FID[i+j].split()
+                    self.SPHIST['NUM'].append(line_split[0])
+                    self.SPHIST['NAME'].append(' '.join([line.replace("'","") for line in line_split[3:]]))
+                i+=numSPHIST
+
+            elif line_split[0] == 'SPEC-HISTORY':
+                props_list, i = self.parse_nobin(FID, i)
+                for prop in props_list[3:]:
+                    num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
+                    # print(prop)
+                    # print(np.asscalar(num_bytes))
+                    if prop == 'SPVALS':
+                        spvals_temp = np.fromfile(FID_bin, np.float64, count=numSPHIST).byteswap()
+                        self.SP['VAL'].append(spvals_temp)
+                    else:
+                        _ = np.fromfile(FID_bin, np.byte, count=np.asscalar(num_bytes)).byteswap()
+            
+
+            # Variables stored in binary but skipped in parsing
+            elif line_split[0] in skip_list:
+                item_num = int(line_split[2])
+                for j in range(item_num):
+                    num_bytes = np.fromfile(FID_bin, np.int64, count=1).byteswap()
+                    _ = np.fromfile(FID_bin, np.byte, count=np.asscalar(num_bytes)).byteswap() 
+                i+=1
+            
+
+            # Other variables parsed from text file
+            elif line_split[0] in REC_list:
+                list_temp = FID[i].split()
+                while list_temp[-1] != '/':
+                    i+=1
+                    list_temp += FID[i].split()
+                self.REC[line_split[0]] = list_temp[1:-1]
+                i+=1
+
+            else:
+                i+=1
+        
+        FID_bin.close()
+
+        # OUTPUT VARIABLES MURAT
+        if reaction_type == 'MURAT':
+            self.t = (np.asarray(self.TIME['VECT'])[:,1]).astype(np.float)
+            TEMP_VALS = np.asarray(self.GRID['TEMP'])
+            self.SPEC_VALS = np.asarray(self.SP['VAL'])
+            self.N2_PROD   = self.SPEC_VALS[:,8]
+            self.O2_PROD   = self.SPEC_VALS[:,9] 
+            self.H2O_PROD  = self.SPEC_VALS[:,10]
+            self.CO_PROD   = self.SPEC_VALS[:,11]
+            self.CO2_PROD  = self.SPEC_VALS[:,12]
+            self.lin_HR = np.asarray(TEMP_VALS)[:,8]
+        elif reaction_type == 'BO':
+            # OUTPUT VARIABLES BO
+            TEMP_VALS = np.asarray(self.GRID['TEMP'])
+            SPEC_VALS = np.asarray(self.SP['VAL'])
+            self.N2_PROD = SPEC_VALS[6,:]
+            self.O2_PROD = SPEC_VALS[7,:] 
+            self.H2O_PROD = SPEC_VALS[8,:]
+            self.CO_PROD = SPEC_VALS[9,:]
+            self.CO2_PROD = SPEC_VALS[10,:]
+            self.lin_HR = TEMP_VALS[8,:]
+    
+    @staticmethod
+    def parse_nobin(file_in, i):
+        '''
+        file_in - file to be parsed
+        i - current line number
+        '''
+        
+        list_temp = file_in[i].split()
+        while list_temp[-1] != '/':
+            i+=1
+            list_temp += file_in[i].split()
+        i+=1
+
+        return list_temp[1:-1], i
 
 
 """
@@ -937,7 +2018,6 @@ class Component():
     '''
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-        
 class Kinetics:
     '''
     Reaction definition for writing STARS runfile

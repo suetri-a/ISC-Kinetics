@@ -62,7 +62,7 @@ class KineticCellBase(ABC):
             self.balance_dict[b] = np.array([self.material_dict[b][c] for c in self.comp_names])
 
         self.fuel_names = opts.fuel_comps
-        self.pseudo_fuel_comps = opts.pseudo_fuel_comps
+        self.pseudo_fuel_comps = [f for f in opts.pseudo_fuel_comps if f in self.comp_names]
         self.fuel_inds = [self.comp_names.index[r] for r in opts.reac_names if r in opts.fuel_comps or r in opts.pseudo_fuel_comps]
 
         # Optimization-related information
@@ -90,7 +90,6 @@ class KineticCellBase(ABC):
             self.heating_rates = [h/60 for h in opts.heating_rates] # convert HR to /min
             self.num_heats = len(self.heating_rates)
             self.Tspan = opts.Tspan
-            self.time_line = np.linspace(60*opts.Tspan[0], 60*opts.Tspan[1], num=opts.num_sim_steps)
 
             self.IC = [] 
             for _ in range(self.num_heats):

@@ -1,10 +1,12 @@
 import numpy as np 
 import scipy as sp
-import cvxpy as cvx
 import networkx as nx
 import os
 
+from scipy.optimize import nnls
+
 import utils.stars as stars
+import utils.stars.rto as rto
 from utils.utils import mkdirs, solve_const_lineq
 from .kinetic_cell_base import KineticCellBase
 
@@ -14,8 +16,8 @@ class STARSModel(KineticCellBase):
     def modify_cmd_options(parser):
         # STARS Simulation Parameters
         parser.add_argument('--stars_sim_folder', type=str, default='stars', help='folder where run files are written')
-        parser.add_argument('--stars_base_model', type=str, default='Chen', help='which model to use [Chen | Cinar | Kristensen]')
-        parser.add_argument('--stars_exe_path', type=str, default='\'C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe\'', 
+        parser.add_argument('--stars_base_model', type=str, default='cinar', help='which model to use [chen | cinar | kristensen]')
+        parser.add_argument('--stars_exe_path', type=str, default='"C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe"', 
                             help='path where to execute CMG-STARS')
 
         # Add reaciton model parameters
@@ -32,9 +34,13 @@ class STARSModel(KineticCellBase):
         super().__init__(opts)
 
         self.base_model = opts.stars_base_model
-        self.cd_path = self.results_dir + opts.stars_sim_folder
+        self.base_filename = 'stars_model'
+        self.cd_path = self.results_dir + opts.stars_sim_folder + '\\'
         mkdirs([self.cd_path])
         self.exe_path = opts.stars_exe_path
+        
+        vkc_class = rto.get_vkc_model(opts.stars_base_model)
+        self.vkc_model = vkc_class(folder_name=self.cd_path, input_file_name=self.base_filename)
 
         self.time_line = None
         self.heat_reaction = opts.heat_reaction
@@ -43,7 +49,8 @@ class STARSModel(KineticCellBase):
         self.pre_exp_rev = opts.pre_exp_rev
         self.act_eng_rev = opts.act_eng_rev
 
-        self.get_mappings() # Determine reactions for mappings
+        self.reac_coeff, self.prod_coeff, self.reac_order, self.prod_order = self.init_reaction_matrices()
+
         self.init_params(opts) # Use mappings to determine variables
         self.map_params(self.params) # Map to be a balanced reaction
 
@@ -58,6 +65,11 @@ class STARSModel(KineticCellBase):
 
         # Initialize the lists for update functions, parameters, and parameter types
         self.params, self.param_types = [], []
+        
+        # Determine reactions for mappings
+        self.get_mappings() 
+
+        # Iterate over reactions and add parameters
         for i in range(self.num_rxns):
             if self.log_params:
                 self.params.append(np.log(self.pre_exp_fwd[i]))
@@ -83,7 +95,7 @@ class STARSModel(KineticCellBase):
 
         # Perform maximal matching with given weighting scheme
         U, V, G = self.get_rxn_fuel_graph()
-        matches = nx.bipartite.maximum_matching(G)
+        matches = nx.algorithms.bipartite.minimum_weight_full_matching(G)
 
         # Reactions for mapping material properties or coefficients
         self.map_rxns_material = [U.index(matches[v]) for v in V] # rxns to solve for fuels
@@ -91,8 +103,7 @@ class STARSModel(KineticCellBase):
 
         # Reactions for determining coefficients before material mapping
         oxy_fuels = self.get_oxy_fuels() # coeffs on material rxns
-        self.map_rxns_oxy = [i for i in range(self.num_rxns) if ((i!=0) and \
-            (i not in self.map_rxns_material) and (self.fuel_names[i] not in oxy_fuels))] 
+        self.map_rxns_oxy = [r for r in self.map_rxns_material if all([c not in oxy_fuels for c in self.reac_names[r]+self.prod_names[r]])]
 
 
     def add_stoic_coeff_params(self, r):
@@ -137,22 +148,21 @@ class STARSModel(KineticCellBase):
         # Initialize bipartite graph
         G = nx.Graph() 
         U = ['Reaction {}'.format(i+1) for i in range(self.num_rxns)] # Create partition of reaction nodes
-        V = [f for f in self.pseudo_fuel_comps] # Create partition of unknown fuels
+        V = [c for c in self.comp_names if c in self.pseudo_fuel_comps] # Create partition of unknown fuels
         G.add_nodes_from(U, bipartite = 0)
         G.add_nodes_from(V, bipartite = 1)
         
         spec_counts = np.array([len(self.reac_names[i] + self.prod_names[i]) for i in range(self.num_rxns)])
         spec_const = np.array([len([c[2] for c in self.rxn_constraints if c[0]==r+1]) for r in range(self.num_rxns)])
         weights = spec_counts - spec_const - 1
-
+        
+        oxy_fuels = self.get_oxy_fuels()
         for i, _ in enumerate(U):
             for j, v in enumerate(V):
-                
-                if v not in self.get_oxy_fuels():
-                    G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]-1))
-                else:
+                if v in oxy_fuels:
                     G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]))
-
+                else:
+                    G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]-1))
 
         return U, V, G
 
@@ -188,7 +198,7 @@ class STARSModel(KineticCellBase):
 
         # If there is at least one rxn_number - 1 walk between O2 and the fuel species
         #   Note: this works because graphs in combustion equations are acyclic
-        oxy_fuels = [s for i, s in enumerate(self.comp_names) if s in self.opts.fuel_comps and S[i] > 0]
+        oxy_fuels = [f for f in self.pseudo_fuel_comps if S[self.comp_names.index(f)]]
 
         return oxy_fuels
 
@@ -197,30 +207,47 @@ class STARSModel(KineticCellBase):
     ##### RUNNING EXPERIMENTS SECTION
     ###############################################################
 
-    def run_RTO_experiment(self, x, heating_rate, IC):
+    def run_RTO_experiment(self, x, hr, IC):
         
         self.params = x # Make sure parameters and mapped parameters are synchronized
         self.map_params(self.params) # Map parameters into reaction variables
 
-        # self.sim_completed, self.parsed = False, False
-        # clear_stars_files(self.folder_name)
-        # self.write_dat_file(components, kinetics, IC_dict, heating_rate)
-        # self.run_dat_file(None, None, None)
-        # self.parse_stars_output(None)
-        
-        reaction_list = self.get_stars_reaction_list()
-
-        stars_components = stars.get_component_dict(self.comp_names, self.base_model)
-        component_dict = {}
+        stars_reactions = self.get_stars_reaction_list()
+        stars_components_all = stars.get_component_dict(self.comp_names, self.base_model)
+        stars_components = {}
         for i, name in enumerate(self.comp_names):
-            comp_temp = stars_components[name]
-            comp_temp.CMM = [self.material_dict['M'][i]]
-            component_dict[name] = comp_temp
+            stars_components[name] = stars_components_all[name]
+            stars_components[name].CMM = [self.balance_dict['M'][i]]
 
-        filename = 'stars_runfile'
-        stars.create_stars_runfile(filename, self.base_model, component_dict, reaction_list, heating_rate)
-        stars.run_stars_runfile(filename, self.exe_path, self.cd_path)
-        t, ydict = stars.read_stars_output(filename, self.base_model)
+        # Run stars runfile
+        IC_dict = {'Oil': IC[self.comp_names.index('OIL-H')], 'O2': IC[self.comp_names.index('O2')]}
+
+        if self.isOptimization:
+            write_dict = {
+                        'COMPS': stars_components, 
+                        'REACTS': stars_reactions, 
+                        'IC_dict': IC_dict, 
+                        'HR': hr,
+                        'TEMP_MAX': self.max_temp[hr],
+                        'TFINAL': self.time_line[hr][-1],
+                        'O2_con_in': self.O2_con_in[hr]
+                        }
+        else:
+            write_dict = {
+                    'COMPS': stars_components, 
+                    'REACTS': stars_reactions, 
+                    'IC_dict': IC_dict, 
+                    'HR': hr,
+                    'TEMP_MAX': self.max_temp,
+                    'TFINAL': self.Tspan[-1],
+                    'O2_con_in': 0.2070
+                    }
+
+        self.vkc_model.write_dat_file(**write_dict)
+        self.vkc_model.run_dat_file(self.exe_path, self.cd_path, self.base_filename)
+        self.vkc_model.parse_stars_output()
+
+        t, ydict = self.vkc_model.get_stars_output()
         spec_names_temp = self.comp_names + 'Temp'
         y = np.stack([ydict[name] for name in spec_names_temp]) # assemble output vector
 
@@ -230,7 +257,8 @@ class STARSModel(KineticCellBase):
     def get_stars_reaction_list(self):
         reaction_list = []
         for i in range(self.num_rxns):
-            reaction_list.append(stars.Reaction(NAME="RXN"+str(i+1),STOREAC=self.reac_coeff[i,:].tolist(),
+            reaction_list.append(stars.Kinetics(NAME="RXN"+str(i+1),
+                                    STOREAC=self.reac_coeff[i,:].tolist(),
                                     STOPROD=self.prod_coeff[i,:].tolist(),
                                     RORDER=self.reac_order[i,:].tolist(),
                                     FREQFAC=self.pre_exp_fwd[i], EACT=self.act_eng_fwd[i],
@@ -246,6 +274,7 @@ class STARSModel(KineticCellBase):
         self.num_heats = len(self.heating_rates)
         self.time_line = data_cell.time_line # times are loaded as dict with hr as key
         self.max_temp = data_cell.max_temp
+        self.O2_con_in = data_cell.O2_con
     
 
     ###############################################################
@@ -265,31 +294,52 @@ class STARSModel(KineticCellBase):
         if any(p is None for p in params): # Check that there are no non-type parameters
             raise Exception('map_params() not implemented for None type parameters.')
 
-        self.reset_balance_dict() 
-        self.parse_params() 
+        self.reset_params() 
+        self.parse_params()
 
-        # Map parameters
+        # Map reactions for 
         if self.map_rxns_oxy:
             self.oxy_solver()
-        
+
         self.balance_solver()
-        self.coeff_solver()
+
+        # Map coefficient solver reactions
+        if self.map_rxns_coeff:
+            self.coeff_solver()
 
 
     # Initialize unknown fuels, etc to NaNs
-    def reset_balance_dict(self):
+    def reset_params(self):
         '''
-        Reset psuedocomponent properties to be NaNs
+        Reset psuedocomponent properties and all stoichiometric coefficients besides
 
         '''
+        # Mark unoxy fuels as 0 for O balance
+        oxy_fuels = self.get_oxy_fuels()
+        for c in self.pseudo_fuel_comps:
+            for b in self.balances:
+                if b == 'O' and c not in oxy_fuels:
+                    self.balance_dict[b][self.comp_names.index(c)] = 0
+                else:
+                    self.balance_dict[b][self.comp_names.index(c)] = np.nan
+        
+        for r in range(self.num_rxns):
+            for i, c in enumerate(self.comp_names):
+                # If c is reactant species in rxn r
+                if c in self.reac_names[r]:
+                    # If reactant fuel set coefficient to 1
+                    if c in self.fuel_names+self.pseudo_fuel_comps:
+                        self.reac_coeff[r,i] = 1
+                    else:
+                        self.reac_coeff[r,i] = np.nan
+                    self.prod_coeff[r,i] = 0
 
-        for i, name in enumerate(self.comp_names):
-            if name in self.pseudo_fuel_comps:
-                for b in self.balances:
-                    self.balance_dict[b][i] = np.nan
+                # If c is product species
+                elif c in self.prod_names[r]:
+                    self.prod_coeff[r,i] = np.nan
+                    self.reac_coeff[r,i] = 0
 
 
-    # Map parameters (besides coeff's) into reaction
     def parse_params(self, order_type = 'reac'):
         '''
         Parse through parameter vector to update internal parameters or overwrite nan 
@@ -297,27 +347,23 @@ class STARSModel(KineticCellBase):
 
         '''
 
-        pre_exp_facs_forward = np.zeros_like(self.pre_exp_fwd) # pre-exponential factor (forward reaction) [1/(mole)]
-        act_energies_forward = np.zeros_like(self.act_eng_fwd) # activation energy (forward reaction) [J/mole]
-
-        # Initialize constraints for mapping material reaction parameters
-        constraints = [[]]*len(self.map_rxns_material)
+        self.pre_exp_fwd, self.act_eng_fwd = np.zeros_like(self.pre_exp_fwd), np.zeros_like(self.pre_exp_fwd)
         
         # Iterate over parameters to parse
         for i, p in enumerate(self.params):
             # Pre-exponential factors
             if self.param_types[i][0] == 'preexp': 
                 if self.log_params:
-                    pre_exp_facs_forward[self.param_types[i][1]] = np.exp(p)
+                    self.pre_exp_fwd[self.param_types[i][1]] = np.exp(p)
                 else:
-                    pre_exp_facs_forward[self.param_types[i][1]] = p
+                    self.pre_exp_fwd[self.param_types[i][1]] = p
             
             # Activation energies
             elif self.param_types[i][0] == 'acteng': 
                 if self.log_params:
-                    act_energies_forward[self.param_types[i][1]] = np.exp(p)
+                    self.act_eng_fwd[self.param_types[i][1]] = np.exp(p)
                 else:
-                    act_energies_forward[self.param_types[i][1]] = p
+                    self.act_eng_fwd[self.param_types[i][1]] = p
             
             # Stoiciometric coefficients
             elif self.param_types[i][0] == 'stoic':
@@ -340,193 +386,168 @@ class STARSModel(KineticCellBase):
             else:
                 raise Exception('Invalid parameter type entered.')
         
-        # Enforce constraints for coefficients in balance reactions
-        for i, r in enumerate(self.map_rxns_material):
-            constraints = []
-            nu_r_opt, nu_p_opt = cvx.Variable(shape=(self.num_comp)), cvx.Variable(shape=(self.num_comp))
-            
-            constrained_specs = [C[2] for C in self.rxn_constraints if C[0]-1 == r]
-            for s in self.reac_names[r]:
-                ind = self.comp_names.index(s)
-                if s in self.fuel_names:
-                    constraints.append(nu_r_opt[ind]==1) # fix reactant fuel coeff to 1
-                elif s not in constrained_specs:
-                    constraints.append(nu_r_opt[ind]==self.reac_coeff[r,ind]) # coefficient entered in parsing
-            
-            for s in self.prod_names[r]:
-                ind = self.comp_names.index(s)
-                if s not in constrained_specs:
-                    constraints.append(nu_p_opt[ind]==self.prod_coeff[r,ind])
 
-            # Add species constraints
-            for c in [C for C in self.rxn_constraints if C[0]-1 == r]:
-                ind2 = self.comp_names.index(c[2])
-                ind1 = self.comp_names.index(c[1])
-                if c[2] in self.reac_names[r]:
-                    if c[1] in self.reac_names[r]:
-                        constraints.append(nu_r_opt[ind2] == c[3]*nu_r_opt[ind1])
-                    else:
-                        constraints.append(nu_r_opt[ind2] == c[3]*nu_p_opt[ind1])
-                else:
-                    if c[1] in self.reac_names[r]:
-                        constraints.append(nu_p_opt[ind2] == c[3]*nu_r_opt[ind1])
-                    else:
-                        constraints.append(nu_p_opt[ind2] == c[3]*nu_p_opt[ind1])
-            
-            x = nu_r_opt - nu_p_opt
-            obj = cvx.Minimize(1)
-            prob = cvx.Problem(obj, constraints)
-            prob.solve()
-            self.reac_coeff[r,:] = np.maximum(x.value, 0)
-            self.prod_coeff[r,:] = np.maximum(-1*x.value, 0)
-
-        
-        self.pre_exp_fwd, self.act_eng_fwd = pre_exp_facs_forward, act_energies_forward
-
-
-    def create_linsys_mat_constraints(self, v):
+    def get_constraint_matrix(self, r, comps = None):
         '''
-        Produce constraints so that non-nan entries of v are constrained to 
-            their value. 
-        Input:
-            v - numpy array of material properties we want to optimize 
-        Returns:
-            v_out - cvx Variable the same size as v
-            constraints - list of cvx constraints for fixed entries of v
+        Create matrix to map from independent species in reaction r to all species
+
+        Constraint matrix M is of form:
+            M[species i, independent species j] = c_{ij}
+        where c_{ij} is a constant such that
+            nu_{ri} = c_{ij} nu_{rj}
+        This allows us to enforce constraint by computing
+            All species = M x Independent species
+
         '''
-        v_out, constraints = cvx.Variable(v.shape), []
-        for i in range(v.shape[0]):
-            if not np.isnan(v[i]):
-                constraints.append(v_out[i] == v[i])
-        constraints.append(v_out >= 0)
-        return v_out, constraints
+
+        if comps is None:
+            comps = self.comp_names
+
+        independent_specs = self.get_independent_species(r)
+
+        M = np.zeros((len(comps), len(independent_specs)))
+
+        for i, c in enumerate(comps):
+            if c in independent_specs:
+                M[i, independent_specs.index(c)] = 1
+
+        for C in self.rxn_constraints:
+            if C[0] - 1 == r:
+                M[comps.index(C[2]), independent_specs.index(C[1])] = C[3]
+
+        return M
 
 
-    def create_linsys_coeff_constraints(self, v_r, v_p, rxns, comps):
+    def get_independent_species(self, r):
         '''
-        Produce constraints so that non-nan entries of v are constrained to 
-            their value. 
-        Input:
-            v_r, v_p - numpy arrays for reactants and products, shape n x len(comps)
-            rxns - list of reactions associated with v
-            comps - names of components
-        Returns:
-            v_out - cvx Variable the same size as v
-            constraints - list of cvx constraints for fixed entries of v
+        Get the independent species in a reaction r
+
         '''
-        
-        v_r_out, v_p_out, constraints = cvx.Variable((len(rxns), len(comps))), cvx.Variable((len(rxns),len(comps))), []
-
-        for i, r in enumerate(rxns):
-            # Fix species not in reactants/products to zero
-            for j, c in enumerate(comps):
-                if c not in self.reac_names[r]:
-                    constraints.append(v_r_out[i,j]==0)
-                if c not in self.prod_names[r]:
-                    constraints.append(v_p_out[i,j]==0)
-
-            # Fix parameter species at given values
-            for j in [k for k, p in enumerate(self.param_types) if p[0]=='stoic' and p[1]==r]:
-                if self.param_types[j][2] in comps:
-                    if self.param_types[j][2] in self.reac_names[r]:
-                        constraints.append(v_r_out[i,comps.index(self.param_types[j][2])]==self.params[j])
-                    if self.param_types[j][2] in self.prod_names[r]:
-                        constraints.append(v_p_out[i,comps.index(self.param_types[j][2])]==self.params[j])
-
-            # Iterate over reaction constraints
-            for c in [C for C in self.rxn_constraints if C[0]-1 == r]:
-                if c[2] in comps:
-                    if c[2] in self.reac_names[r]:
-                        if c[1] in self.reac_names[r]:
-                            constraints.append(v_r_out[i,comps.index(c[2])] == \
-                                c[3]*v_r_out[i,comps.index(c[1])])
-                        else:
-                            constraints.append(v_r_out[i,comps.index(c[2])] == \
-                                c[3]*v_p_out[i,comps.index(c[1])])
-                    else:
-                        if c[1] in self.reac_names[r]:
-                            constraints.append(v_p_out[i,comps.index(c[2])] == \
-                                c[3]*v_r_out[i,comps.index(c[1])])
-                        else:
-                            constraints.append(v_p_out[i,comps.index(c[2])] == \
-                                c[3]*v_p_out[i,comps.index(c[1])])
-            
-            # Set reactant fuel to have coefficient of 1
-            if comps == self.comp_names:
-                constraints.append(v_r_out[i,self.fuel_inds[r]]==1)
-
-        # Enforce positivity
-        constraints.append(v_r_out >= 0)
-        constraints.append(v_p_out >= 0)
-
-        return v_r_out, v_p_out, constraints
+        const_specs = [c[2] for c in self.rxn_constraints if c[0]==r+1]
+        ind_specs = [c for c in self.comp_names if c not in const_specs]
+        return ind_specs
 
 
-    ##### Parameter update solvers
     def oxy_solver(self):
-        # Create oxygen vector
-        nonfuels = [c for c in self.comp_names if c not in self.fuel_names]
-        nonfuel_inds = [i for i in range(len(self.comp_names)) if i not in self.fuel_inds]
-        A = np.reshape(np.array([self.material_dict['O'][i] for i in nonfuel_inds]), (-1,1))
+        '''
+        Solve balance to fill in unknown stoichiometric coefficients for non-fuel species.
 
-        # Iterate over reactions -- address dimensionality issue later
+        '''
+        
+        # extract non-fuel species
+        comp_inds, comps = zip(*[(i,c) for i, c in enumerate(self.comp_names) if c not in self.fuel_names+self.pseudo_fuel_comps])
+        comp_inds, comps = list(comp_inds), list(comps)
+
+        # Create oxygen content vector to act as RHS matrix
+        O_mat = np.expand_dims(self.balance_dict['O'][comp_inds], 0)
+
         for r in self.map_rxns_oxy:
+            # Get non-fuel species independent species
+            independent_inds = [comps.index(c) for c in enumerate(self.get_independent_species(r)) if c in comps]
 
-            # Create optimizaiton variables and constraints
-            nu_r_temp = self.reac_coeff[r, nonfuel_inds]
-            nu_p_temp = self.prod_coeff[r, nonfuel_inds]
-            nu_r, nu_p, constraints = self.create_linsys_coeff_constraints(nu_r_temp, nu_p_temp, [r], comps=nonfuels)
-            nu = nu_r - nu_p
-
-            # Solve non-negative least squares problem
-            x, _ = solve_const_lineq(A, nu, 0, constraints)
+            # Get indices of species in the reaction 
+            reac_inds = [i for i, c in zip(comp_inds, comps) if c in self.reac_names[r]]
+            prod_inds = [i for i, c in zip(comp_inds, comps) if c in self.prod_names[r]]
             
-            # Update reaction parameters
-            self.reac_coeff[r, nonfuel_inds] = np.maximum(x, 0)
-            self.prod_coeff[r, nonfuel_inds] = np.maximum(-x, 0)
+            # Restrict oxygen matrix to be for relevant components
+            O_mat_new = O_mat
+            O_mat_new[:,prod_inds] *= -1 # For product species
+            O_mat_new = O_mat_new[:,comp_inds] # Restrict to non-fuel components
 
+            # Get independent species
+            coeff_temp = self.reac_coeff[r,comp_inds] + self.prod_coeff[r,comp_inds]
+            coeff_temp = coeff_temp[independent_inds]
+
+            # Enforce constraints between variables
+            M = self.get_constraint_matrix(r)
+            Mnew = M[comp_inds, independent_inds]
+            AM = np.dot(O_mat_new, Mnew)
+
+            # Solve nnls problem for indepent coefficients
+            coeff_temp = self.solve_nnls_problem(AM, coeff_temp)
+            all_coeffs = np.dot(Mnew, coeff_temp)
+
+            self.reac_coeff[r,reac_inds] = all_coeffs[:,reac_inds]
+            self.prod_coeff[r,prod_inds] = all_coeffs[:,prod_inds]
+    
 
     def balance_solver(self):
         '''
-        Material balance to obtain missing molecular weight and/or oxygen content of a fuel species. 
-        ''' 
+        Solve material/elemental balances for pseudocomponents
 
-        # Assemble A matrix of coefficients
-        A = (self.reac_coeff - self.prod_coeff)[self.map_rxns_material,:]
+        '''
+        # Enforce coefficient constraints 
+        for r in self.map_rxns_material:
+            M = self.get_constraint_matrix(r)
 
-        # Solve balances individually
-        for B in self.opts.balances:
-            # Create optimization variables and constraints
-            v = self.material_dict[B]
-            nu, constraints = self.create_linsys_mat_constraints(v)
+            independent_specs = self.get_independent_species(r)
+            independent_inds = [i for i,c in enumerate(self.comp_names) if c in independent_specs]
+            coefftemp = self.reac_coeff[r,independent_inds] + self.prod_coeff[r,independent_inds]
+            allcoeff = np.dot(M, coefftemp)
 
-            # Solve non-negative least squares problem and update parameters
-            self.material_dict[B], _ = solve_const_lineq(A, nu, 0, constraints)
+            reac_inds = [i for i, c in enumerate(self.comp_names) if c in self.reac_names[r]]
+            self.reac_coeff[r,reac_inds] = allcoeff[reac_inds]
+
+            prod_inds = [i for i, c in enumerate(self.comp_names) if c in self.prod_names[r]]
+            self.prod_coeff[r,prod_inds] = allcoeff[prod_inds]
+
+        # Assemble coefficient matrix
+        A = np.stack([self.reac_coeff[r,:] - self.prod_coeff[r,:] for r in self.map_rxns_material])
+        print(A)
+        for b in self.balances:
+            self.balance_dict[b] = self.solve_nnls_problem(A, self.balance_dict[b])
 
 
     def coeff_solver(self):
         '''
-        Material/oxygen balance to obtain missing stoichiometric coefficients. Assumes all 
-            weights/oxygen counts are known. Balances can be applied separately.
+        Solve balance to fill in uknown stoichiometric coefficients
         '''
+        # Stack vectors from material balances
+        A = np.stack([self.balance_dict[b] for b in self.balances])
 
-        # Assemble matrices of material properties for balances
-        A = np.stack([self.material_dict[B] for B in self.opts.balances])
-
-        # Iterate over reactions and solve individually
         for r in self.map_rxns_coeff:
-            # Create optimization variables and constraints
-            nu_r, nu_p, constraints = self.create_linsys_coeff_constraints(self.reac_coeff[r,:], self.prod_coeff[r,:], 
-                                                                            [r], self.comp_names)
-            nu = nu_r - nu_p
+            # Get indices for reactants and products
+            reac_inds = [i for i, c in enumerate(self.comp_names) if c in self.reac_names[r]]
+            prod_inds = [i for i, c in enumerate(self.comp_names) if c in self.prod_names[r]]
 
-            # Solve non-negative least squares problem
-            x, _ = solve_const_lineq(A, nu.T, 0, constraints)
+            # Negate product columns
+            A_temp = A
+            A_temp[:,prod_inds] *= -1
 
-            # Update parameters
-            self.reac_coeff[r,:] = np.squeeze(np.maximum(x, 0))
-            self.prod_coeff[r,:] = np.squeeze(np.maximum(-x, 0))
-        
+            # Enforce equality constraints
+            M = self.get_constraint_matrix(r)
+            AM = np.dot(A_temp, M)
+
+            # Solve coefficients for independent species
+            independent_specs = self.get_independent_species(r)
+            independent_inds = [self.comp_names.index(c) for c in independent_specs]
+            coeff_independent = self.solve_nnls_problem(AM,  self.reac_coeff[r,independent_inds] - self.prod_coeff[r,independent_inds])
+            
+            # Map independent species into all species
+            coeff_all = np.dot(M, coeff_independent)
+
+            # Extract indices from calculated coefficients
+            self.reac_coeff[r,reac_inds] = coeff_all[reac_inds]
+            self.prod_coeff[r,prod_inds] = coeff_all[prod_inds]
+
+
+    @staticmethod
+    def solve_nnls_problem(A_in, x):
+        '''
+        Solves non-negative least-squares problem for mapping parameters
+
+        Inputs: from equation of form
+                    A_in x = 0
+            where x[known_inds] are known 
+        '''
+        known_inds = [i for i in range(x.shape[0]) if not np.isnan(x[i])] 
+        unknown_inds = [i for i in range(x.shape[0]) if np.isnan(x[i])]
+        b = -1*np.dot(A_in[:,known_inds], x[known_inds])
+        A = A_in[:,unknown_inds]
+        result = nnls(A, b)
+        x[unknown_inds], _ = np.squeeze(result)
+        return x
+
 
     #################################################
     ##### OTHER UTILITY FUNCTIONS

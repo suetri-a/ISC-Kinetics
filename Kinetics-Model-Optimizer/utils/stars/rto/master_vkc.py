@@ -3,7 +3,7 @@ import os
 from .rto_base import RtoBase
 from .reactions import Component, Kinetics
 
-class CinarVKC(RtoBase):
+class MasterVKC(RtoBase):
 
     @staticmethod
     def get_default_reaction():
@@ -11,33 +11,52 @@ class CinarVKC(RtoBase):
         Component_map["H2O"] = Component(COMPNAME="H2O",CMM=[1.8e-2],PCRIT=[22083],TCRIT=[373.8],
                                         AVG=[0],BVG=[0],AVISC=[0],BVISC=[0],
                                         CPG1=[0],CPG2=[0],CPG3=[0],CPG4=[0],CPL1=[0],CPL2=[0],
-                                        MASSDEN=[0.001],CP=[0],CT1=[0],CT2=[0],SOLID_DEN=[],SOLID_CP=[])
+                                        MASSDEN=[0.001],CP=[0],CT1=[0],CT2=[0],SOLID_DEN=[],SOLID_CP=[],
+                                        HVAPR=[0], EV=[0],
+                                        phase=1)
         Component_map["OIL"] = Component(COMPNAME="OIL",CMM=[4.73e-1],PCRIT=[890],TCRIT=[171],
                                         AVG=[0.0001610891804],BVG=[0.7453161006],AVISC=[1.426417368e-11],BVISC=[10823.06574],
-                                        CPG1=[26.804420692906],CPG2=[0.005649089963],CPG3=[0.000095012314],CPG4=[-0.000000054709],CPL1=[524.8821790],CPL2=[1.148635444845],
-                                        MASSDEN=[0.000999798],CP=[7.25e-7],CT1=[0.00069242],CT2=[0])
+                                        CPG1=[26.804420692906],CPG2=[0.005649089963],CPG3=[0.000095012314],CPG4=[-0.000000054709],
+                                        CPL1=[524.8821790],CPL2=[1.148635444845],
+                                        MASSDEN=[0.000999798],CP=[7.25e-7],CT1=[0.00069242],CT2=[0],
+                                        HVAPR=[0], EV=[0],
+                                        phase=2)
         Component_map["N2"] = Component(COMPNAME="N2",CMM=[2.8e-2],PCRIT=[3392],TCRIT=[-147],
                                         AVG=[0.0003500869287],BVG=[0.6927470725],AVISC=[],BVISC=[],
-                                        CPG1=[30.956477056957],CPG2=[-0.012716023994],CPG3=[0.000025490143],CPG4=[-0.000000011065],CPL1=[0],CPL2=[0])
+                                        CPG1=[30.956477056957],CPG2=[-0.012716023994],CPG3=[0.000025490143],CPG4=[-0.000000011065],
+                                        CPL1=[0],CPL2=[0],
+                                        phase=3)
         Component_map["O2"] = Component(COMPNAME="O2",CMM=[3.2e-2],PCRIT=[5033],TCRIT=[-118],
                                         AVG=[0.000362791571],BVG=[0.7120986013],AVISC=[],BVISC=[],
-                                        CPG1=[28.600167325729],CPG2=[-0.003497011859],CPG3=[0.000024399453],CPG4=[-0.000000014928],CPL1=[0],CPL2=[0])
+                                        CPG1=[28.600167325729],CPG2=[-0.003497011859],CPG3=[0.000024399453],CPG4=[-0.000000014928],
+                                        CPL1=[0],CPL2=[0],
+                                        phase=3)
         Component_map["CO2"] = Component(COMPNAME="CO2",CMM=[4.4e-2],PCRIT=[7377],TCRIT=[31],
                                         AVG=[0.0001865724378],BVG=[0.7754816784],AVISC=[],BVISC=[],
-                                        CPG1=[19.474325955388],CPG2=[0.075654731286],CPG3=[-0.000060750197],CPG4=[0.000000020109],CPL1=[0],CPL2=[0])
+                                        CPG1=[19.474325955388],CPG2=[0.075654731286],CPG3=[-0.000060750197],CPG4=[0.000000020109],
+                                        CPL1=[0],CPL2=[0],
+                                        phase=3)
         Component_map["CO"] = Component(COMPNAME="CO",CMM=[2.8e-2],PCRIT=[3496],TCRIT=[-144],
                                         AVG=[0.0003315014585],BVG=[0.7037315714],AVISC=[],BVISC=[],
-                                        CPG1=[30.990187019402],CPG2=[-0.01392019971],CPG3=[0.00003014996],CPG4=[-0.00000001415],CPL1=[0],CPL2=[0])
-        Component_map["Coke1"] = Component(COMPNAME="Coke1",CMM=[1.88e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[8.3908475,0.0439425])
-        Component_map["Coke2"] = Component(COMPNAME="Coke2",CMM=[1.36e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[6.96015,0.03645])
-        Component_map["Ci"] = Component(COMPNAME="Ci",CMM=[2.08e-2],SOLID_DEN=[0.0014,0,0],SOLID_CP=[7.192155,0.037665])
+                                        CPG1=[30.990187019402],CPG2=[-0.01392019971],CPG3=[0.00003014996],CPG4=[-0.00000001415],
+                                        CPL1=[0],CPL2=[0],
+                                        phase=3)
+        Component_map["Coke1"] = Component(COMPNAME="Coke1",CMM=[1.88e-2],
+                                        SOLID_DEN=[0.0014,0,0],SOLID_CP=[8.3908475,0.0439425],
+                                        phase=4)
+        Component_map["Coke2"] = Component(COMPNAME="Coke2",CMM=[1.36e-2],
+                                        SOLID_DEN=[0.0014,0,0],SOLID_CP=[6.96015,0.03645],
+                                        phase=4)
+        Component_map["Ci"] = Component(COMPNAME="Ci",CMM=[2.08e-2],
+                                        SOLID_DEN=[0.0014,0,0],SOLID_CP=[7.192155,0.037665],
+                                        phase=4)
         Kinetics_map = []
-        Kinetics_map.append(Kinetics(NAME="RXN1",STOREAC=[0.00E+00, 1.00E+00, 0.00E+00, 9.50E+00, 0.00E+00, 0.00E+00, 0.00E+00, 0.00E+00, 0.00E+00],
+        Kinetics_map.append(Kinetics(NAME="RXN1",STOREAC=[0.00E+00, 1.00E+00, 0.00E+00, 0.00E+00, 0.00E+00, 9.50E+00, 0.00E+00, 0.00E+00, 0.00E+00],
                                     STOPROD=[22.292,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,2.0E+01,0.00E+00,0.00E+00],
                                     RORDER=[0.00E+00,1.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00],
                                     FREQFAC=7E5,EACT=1E5,RENTH=3.98E+06, O2PP='\'O2\''))
 
-        Kinetics_map.append(Kinetics(NAME="RXN2",STOREAC=[0.00E+00,0.00E+00,0.00E+00,1.50E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],
+        Kinetics_map.append(Kinetics(NAME="RXN2",STOREAC=[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.50E+00,1.00E+00,0.00E+00,0.00E+00],
                                     STOPROD=[1.3815E+00,0.00E+00,0.00E+00,0.00E+00,0.75E+00,0.3181E+00,0.00E+00,0.00E+00,0.00E+00],
                                     RORDER=[0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00],
                                     FREQFAC=1E6,EACT=1.14E5,RENTH=6.28E5, O2PP='\'O2\'')
@@ -49,8 +68,8 @@ class CinarVKC(RtoBase):
                                     FREQFAC=1.6E6,EACT=8E4,RENTH=0)
                                     )
 
-        Kinetics_map.append(Kinetics(NAME="RXN4",STOREAC=[0.00E+00,0.00E+00,0.00E+00,0.650000,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00],
-                                    STOPROD=[0.239300,0.00E+00,0.00E+00,0.00E+00,0.565200,0.186200,0.00E+00,0.00E+00,0.00E+00],
+        Kinetics_map.append(Kinetics(NAME="RXN4",STOREAC=[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.650000,0.00E+00,1.00E+00,0.00E+00],
+                                    STOPROD=[0.239300,0.00E+00,0.565200,0.186200,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00],
                                     RORDER=[0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00],
                                     FREQFAC=4.5E6,EACT=1.4E5,RENTH=2.72E5, O2PP='\'O2\'')
                                     )
@@ -61,8 +80,8 @@ class CinarVKC(RtoBase):
                                     FREQFAC=5.334E4,EACT=5.099E4,RENTH=0)
                                     )
 
-        Kinetics_map.append(Kinetics(NAME="RXN6",STOREAC=[0.00E+00,0.00E+00,0.00E+00,0.900000,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00],
-                                    STOPROD=[0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00,2.00E-01,0.00E+00,0.00E+00,0.00E+00],
+        Kinetics_map.append(Kinetics(NAME="RXN6",STOREAC=[0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.900000,0.00E+00,0.00E+00,1.00E+00],
+                                    STOPROD=[0.00E+00,0.00E+00,1.00E+00,2.00E-01,0.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00],
                                     RORDER=[0.00E+00,0.00E+00,0.00E+00,1.00E+00,0.00E+00,0.00E+00,0.00E+00,0.00E+00,1.00E+00],
                                     FREQFAC=1.621E10,EACT=100000,RENTH=1.514E6)
                                     )
@@ -72,7 +91,7 @@ class CinarVKC(RtoBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.numSPHIST = 22
+        self.numSPHIST = 7
 
 
     def get_reaction_dict(self):
@@ -81,12 +100,13 @@ class CinarVKC(RtoBase):
             self.parse_stars_output()
         ydict = {}
 
-        ydict['N2'] = self.SPEC_VALS[:,7][1:]
-        ydict['O2'] = self.SPEC_VALS[:,8][1:]
-        ydict['H2O'] = self.SPEC_VALS[:,9][1:]
-        ydict['CO'] = self.SPEC_VALS[:,10][1:]
-        ydict['CO2'] = self.SPEC_VALS[:,11][1:]
-        ydict['Temp'] = self.SPEC_VALS[:,21][1:] - 273.15
+        ydict['N2'] = self.SPEC_VALS[:,0][1:]
+        ydict['O2'] = self.SPEC_VALS[:,1][1:]
+        ydict['CO'] = self.SPEC_VALS[:,2][1:]
+        ydict['CO2'] = self.SPEC_VALS[:,3][1:]
+        ydict['H2O'] = self.SPEC_VALS[:,4][1:]
+        ydict['OIL'] = self.SPEC_VALS[:,5][1:]
+        ydict['Temp'] = self.SPEC_VALS[:,6][1:] - 273.15
 
         return 24*60*self.t, ydict
 
@@ -94,17 +114,18 @@ class CinarVKC(RtoBase):
 
         if not self.parsed:
             self.parse_stars_output()
-        self.O2_PROD = self.SPEC_VALS[:,8][1:]
-        self.TEMP_avg = self.SPEC_VALS[:,21][1:]
+        self.O2_PROD = self.SPEC_VALS[:,1][1:]
+        self.TEMP_avg = self.SPEC_VALS[:,6][1:]
 
         return self.O2_PROD
 
     
     def print_IO_control(self, fileID):
-        print('** ============== INPUT/OUTPUT CONTROL ======================', file=fileID)
         print("""
+** ============== INPUT/OUTPUT CONTROL ======================
+
 RESULTS SIMULATOR STARS 201710
-*TITLE1 'CINAR VKC Simulation'
+*TITLE1 'ISC Kinetics Optimizer simulation'
 *TITLE2 'ICP - Stanford University'
 *INTERRUPT 	*STOP
 *INUNIT 	*LAB
@@ -117,34 +138,24 @@ RESULTS SIMULATOR STARS 201710
 *WSRF *GRID *TIME
 *WSRF *WELL *TIME
 *OUTSRF *WELL *MOLE *COMPONENT *ALL
-*OUTSRF *SPECIAL MATBAL CURRENT 'O2'
-*OUTSRF *SPECIAL MATBAL CURRENT 'Coke1'
-*OUTSRF *SPECIAL MATBAL CURRENT 'CO'
-*OUTSRF *SPECIAL MATBAL CURRENT 'CO2'
-*OUTSRF *SPECIAL MATBAL CURRENT 'Coke2'
-*OUTSRF *SPECIAL MATBAL CURRENT 'HEAVY OIL'
-*OUTSRF *SPECIAL MATBAL CURRENT 'H2O'
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'N2'
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'O2'
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'H2O'
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'CO'
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'CO2'
-*OUTSRF *SPECIAL MATBAL REACTION 'N2'
-*OUTSRF *SPECIAL MATBAL REACTION 'O2'
-*OUTSRF *SPECIAL MATBAL REACTION 'Coke1'
-*OUTSRF *SPECIAL MATBAL REACTION 'CO'
-*OUTSRF *SPECIAL MATBAL REACTION 'CO2'
-*OUTSRF *SPECIAL MATBAL REACTION 'Coke2'
-*OUTSRF *SPECIAL MATBAL REACTION 'HEAVY OIL'
-*OUTSRF *SPECIAL MATBAL REACTION 'H2O'
-*OUTSRF *SPECIAL MATBAL REACTION ENERGY
+*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'H2O'
+*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'OIL'
 *OUTSRF *SPECIAL AVGVAR TEMP
-*OUTSRF GRID TEMP X Y SO SG SW VPOROS FPOROS MOLDENO MOLDENG MOLDENW SOLCONC MOLE
+** *OUTSRF GRID TEMP X Y SO SG SW VPOROS FPOROS MOLDENO MOLDENG MOLDENW SOLCONC MOLE
               
               """, file = fileID)
 
     
     def print_grid(self, fileID):
+        '''
+        This should not have to be changed if the kinetic cell is designed the same way.
+
+        '''
+
         print('**  ==============  GRID AND RESERVOIR DEFINITION  =================', file = fileID)
         print("""
 *GRID *RADIAL 2 1 11 *RW 0
@@ -239,26 +250,39 @@ PINCHOUTARRAY CON 1
     
     
     def print_fluid(self, fileID, components):
-        print('**  ==============  FLUID DEFINITIONS  ======================', file = fileID)
+
+        comp_names = components.keys()
+        solid_pseudocomps = [c for c in comp_names if components[c].phase==4]
+        
+        numw = 1 # water
+        numx = numw + sum([components[c].phase==2 for c in comp_names]) # parent fuel + liquid psuedo components
+        numy = numx + 4 # add N2, CO, CO2, O2 as incompressible gases
+        ncomp = len(components) # total number of components        
+
         print("""
-*MODEL 9 6 2 
-** Number of noncondensible gases is numy-numx = 4
-** Number of solid components is ncomp-numy = 4
-              """, file = fileID)
-        comp_attrs1 = ['COMPNAME', 'CMM', 'PCRIT', 'TCRIT', 'AVG', 'BVG', 'CPG1', 'CPG2', 'CPG3', 'CPG4', 'CPL1', 'CPL2']
-        self.print_attrs(components, comp_attrs1, fileID)       
-        print("""
-*HVAPR 0 0 
-*EV 0 0 
-              """, file = fileID)
-        comp_attrs2 = ['MASSDEN', 'CP', 'CT1', 'CT2'] # Add in 'AVISC', 'BVISC' if necessary
-        self.print_attrs(components, comp_attrs2, fileID)
-        print('*SOLID_DEN ',"\'"+components["Coke1"].COMPNAME+"\'",*components["Coke1"].SOLID_DEN, file = fileID)
-        print('*SOLID_CP ',"\'"+components["Coke1"].COMPNAME+"\'",*components["Coke1"].SOLID_CP, file = fileID)
-        print('*SOLID_DEN ',"\'"+components["Coke2"].COMPNAME+"\'",*components["Coke2"].SOLID_DEN, file = fileID)
-        print('*SOLID_CP ',"\'"+components["Coke2"].COMPNAME+"\'",*components["Coke2"].SOLID_CP, file = fileID)
-        print('*SOLID_DEN ',"\'"+components["Ci"].COMPNAME+"\'",*components["Ci"].SOLID_DEN, file = fileID)
-        print('*SOLID_CP ',"\'"+components["Ci"].COMPNAME+"\'",*components["Ci"].SOLID_CP, file = fileID)
+**  ==============  FLUID DEFINITIONS  ======================
+
+*MODEL {ncomp} {numy} {numx} {numw}
+
+              """.format(ncomp=ncomp, numy=numy, numx=numx, numw=numw), 
+            file = fileID)
+
+        comp_attrs = ['COMPNAME', 'CMM', 'PCRIT', 'TCRIT', 'AVG', 'BVG', \
+                        'CPG1', 'CPG2', 'CPG3', 'CPG4', 'CPL1', 'CPL2', \
+                        'HVAPR', 'EV', 'MASSDEN', 'CP', 'CT1', 'CT2']
+        self.print_attrs(components, comp_attrs, fileID)
+
+        # Print properties of solid pseudo components
+        for c in solid_pseudocomps:
+            print("""
+*SOLID_DEN \'{compname}\' {solid_den}
+*SOLID_CP \'{compname}\' {solid_cp}
+            """.format(compname=c, 
+                    solid_den=' '.join(map(str, components[c].SOLID_DEN)),
+                    solid_cp=' '.join(map(str, components[c].SOLID_CP))), 
+                file=fileID)
+
+        # Print fixed VISCTABLE instead of using AVISC and BVISC data
         print("""
 *VISCTABLE
 10      0    100000
@@ -269,8 +293,9 @@ PINCHOUTARRAY CON 1
 
     
     def print_ref_cond(self, fileID):
-        print('**  ==============  Reference CONDITIONS  ======================', file = fileID)
         print("""
+**  ==============  Reference CONDITIONS  ======================
+
 *PRSR 101.325
 *TEMR 25
 *PSURF 101.325
@@ -279,8 +304,9 @@ PINCHOUTARRAY CON 1
 
     
     def print_rock_fluid(self, fileID):
-        print('**  ==============  ROCK-FLUID PROPERTIES  ======================', file = fileID)
         print("""
+**  ==============  ROCK-FLUID PROPERTIES  ======================
+
 *ROCKFLUID
 *RPT 1 LININTERP WATWET
 *swt ** Water-oil relative permeabilities
@@ -338,7 +364,7 @@ PINCHOUTARRAY CON 1
         print("""
 *INITIAL
 *PRES *CON   8273.709
-*TEMP *CON   25
+*TEMP *CON   {T_init}
 *VERTICAL OFF
 *INITREGION 1
 *SW *IJK 
@@ -359,17 +385,18 @@ PINCHOUTARRAY CON 1
 **G_SATEND
          2 1 1:11 0.0
 
-**Gas in tube is air(79%N2 & 21%O2)
 **MFRAC_GAS 'N2' CON       1
 *MFRAC_GAS 'O2' *con {O2_con}
 *MFRAC_GAS 'N2' *con {N2_con}      
         
-              """.format(OIL_SAT=IC_dict['Oil'], GAS_SAT=1-IC_dict['Oil'], O2_con=IC_dict['O2'], N2_con=1-IC_dict['O2']), 
+              """.format(T_init=IC_dict['Temp'], OIL_SAT=IC_dict['Oil'], GAS_SAT=1-IC_dict['Oil'], 
+                        O2_con=IC_dict['O2'], N2_con=1-IC_dict['O2']), 
                         file = fileID)
     
     def print_numerical(self, fileID):
-        print('**  ==============  NUMERICAL CONTROL  ======================', file = fileID)
         print("""
+**  ==============  NUMERICAL CONTROL  ======================
+
 *NUMERICAL
 *MAXSTEPS 100000
 *DTMAX    0.1
@@ -382,15 +409,15 @@ PINCHOUTARRAY CON 1
 
     
     def print_recurrent(self, fileID, O2_con_in):
-        print('**  ==============  RECURRENT DATA  ======================', file = fileID)
         print("""
+**  ==============  RECURRENT DATA  ======================
 
 *TIME   0
 *DTWELL 0.01
 *WELL   'INJE'
 *WELL   'PROD'
 *INJECTOR UNWEIGHT 'INJE'
-*INCOMP  GAS  0.  0.  {N2_in}  {O2_in}  0.  0.
+*INCOMP  GAS  0.  0.  0.  0.  {N2_in}  {O2_in} 
 *TINJW  26.
 *OPERATE  MAX  STG  166.67  CONT
 *GEOMETRY  K  1.5  1.  1.  0.
@@ -406,8 +433,9 @@ PINCHOUTARRAY CON 1
 
     
     def print_heater(self, fileID):
-        print('**  ============== DEFINE HEATERS ======================', file = fileID)
         print("""
+**  ==============  DEFINE HEATERS  ======================
+
 *UHTR *IJK 2 1 1:11 3000
 *TMPSET *IJK 2 1 1:11 25
 *HEATR *IJK 2 1 1 30000
@@ -417,9 +445,9 @@ PINCHOUTARRAY CON 1
 
     
     def print_heating_ramp(self, fileID, HR, tfinal, tempmax):
-        print('** ==========Linear Ramped Heating==========', file=fileID)
+        print('** ==========  HEATING SCHEDULE  ==========', file=fileID)
 
-        for t in range(int(tfinal)):
+        for t in range(int(tfinal)-1):
             if (20 + HR*t) > tempmax:
                 print('*TIME ', str(t+1), file = fileID)
                 print('*TMPSET *IJK 2 1 1:11 ', str(750), file = fileID)
@@ -430,4 +458,5 @@ PINCHOUTARRAY CON 1
                 print('*TMPSET *IJK 2 1 1:11 ', str(20 + HR*t), file = fileID)
                 print("*INJECTOR 'INJE'", file = fileID)
                 print('*TINJW ', str(20 + HR*t), file = fileID)
-        print('*TIME  {}'.format(tfinal), file = fileID)
+        print('*TIME ', str(tfinal), file=fileID)
+        print('*STOP', file=fileID)
