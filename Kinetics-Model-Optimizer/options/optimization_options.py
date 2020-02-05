@@ -17,7 +17,7 @@ class OptimizationOptions(KineticCellOptions):
         parser.add_argument('--balances', type=str, nargs='+', action='append', default=['M', 'O'], help='balances to constrain optimization [M | O | C]')
 
         # Reaction arguments
-        parser.add_argument('--reaction_model', type=str, default='Chen2', 
+        parser.add_argument('--reaction_model', type=str, default='Cinar', 
             help='pre-programmed reaction model to use [Cinar | CinarMod1 | CinarMod2 | CinarMod3 | Chen1 | Chen 2 | Dechelette1 | Dechelette2 | Crookston]')
         parser.add_argument('--kinetics_model', type=str, default='arrhenius', help='type of kinetics model to use [arrhenius | stars]')
         parser.add_argument('--load_rxn', type=eval, default=True, help='names of reactants')

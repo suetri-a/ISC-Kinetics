@@ -36,7 +36,7 @@ class KineticCellBase(ABC):
         self.P = opts.O2_partial_pressure # O2 partial pressure 
         self.R = opts.R 
         self.T0 = opts.T0
-        self.O2_con_sim = 0.2070*self.P /(self.R*self.T0)
+        self.O2_con_sim = 0.25
 
         #### SIMULATION RESULTS
         self.reaction_model = opts.reaction_model
@@ -172,9 +172,12 @@ class KineticCellBase(ABC):
         '''
         Short wrapper to run the heating rates
         '''
+        self.t = []
         self.y = []
         for i, h in enumerate(self.heating_rates):
-            self.y.append(self.run_RTO_experiment(params, h, self.IC[i]))
+            t, y = self.run_RTO_experiment(params, h, self.IC[i])
+            self.t.append(t)
+            self.y.append(y)
 
         if return_vals:
             return self.y
@@ -191,15 +194,15 @@ class KineticCellBase(ABC):
             O2_consumption = [#Heating rates, #Time steps] array of O2 consumption curves
 
         '''
-
+        
         if self.isOptimization:
             y_temp = self.run_RTO_experiments(x, return_vals=True)
-            self.O2_consumption = np.stack([self.O2_con[hr] - y_temp[i][self.O2_ind,:] for i, hr in enumerate(self.heating_rates)])
+            self.O2_consumption = np.stack([self.O2_con[hr] - y_temp[i][self.comp_names.index('O2'),:] for i, hr in enumerate(self.heating_rates)])
         
         else:
             self.run_RTO_experiments(x)
-            self.O2_consumption = self.O2_con_sim - np.stack([y[self.O2_ind,:] for y in self.y])
-            self.Temperature = np.stack([y[-1,:] for y in self.y])
+            self.O2_consumption = [self.O2_con_sim - y[self.comp_names.index('O2'),:] for y in self.y]
+            self.Temperature =[y[-1,:] for y in self.y]
         
         return self.O2_consumption
 
@@ -250,14 +253,14 @@ class KineticCellBase(ABC):
 
         O2_fig, O2_plot = plt.subplots()
         for i in range(len(self.heating_rates)):
-            O2_plot.plot(self.time_line/60, O2_consumption[i,:])
+            O2_plot.plot(self.t[i], O2_consumption[i])
         O2_plot.set_xlabel('Time, min')
         O2_plot.set_ylabel(r'$O_2$ Consumption [mol]')
         O2_plot.legend(['{} C/min'.format(np.around(r*60, decimals = 2)) for r in self.heating_rates]) 
 
         temp_fig, temp_plot = plt.subplots()
         for i in range(len(self.heating_rates)):
-            temp_plot.plot(self.time_line/60, self.Temperature[i,:]-273.15)
+            temp_plot.plot(self.t[i], self.Temperature[i])
         temp_plot.set_xlabel('Time, min') 
         temp_plot.set_ylabel('Temperature, C')
         temp_plot.legend(['{} C/min'.format(np.around(r*60, decimals = 2)) for r in self.heating_rates]) 

@@ -1,43 +1,43 @@
 ----------------- Options ---------------
-                  IC_dict: {'H2O': 0, 'N2': 0, 'O2': None, 'CO2': 0, 'CO': 0, 'Gas': 0, 'OIL-H': 20000.0, 'OIL-L': 20000.0, 'OIL': 0, 'Coke1': 0, 'Coke2': 0, 'Ci': 0}	[default: None]
+                  IC_dict: {'H2O': 0, 'N2': 0, 'O2': None, 'CO2': 0, 'CO': 0, 'Gas': 0, 'Oil': 0.04, 'Oil2': 0, 'Oil3': 0, 'Oil4': 0, 'Coke1': 0, 'Coke2': 0, 'Coke3': 0, 'Coke4': 0, 'Ci': 0, 'Temp': 25.0}	[default: None]
       O2_partial_pressure: 6894.76                       
                         R: 8.314                         
-                       T0: 293.15                        
-                    Tspan: [0.0, 600.0]                  
+                       T0: 20.0                          
+                    Tspan: [0.0, 500.0]                  
                        Ua: 15000.0                       
-              act_eng_fwd: [30000.0, 65000.0]            	[default: None]
-              act_eng_rev: None                          
+              act_eng_fwd: [100000.  50000.  60000.  80000.  80000. 100000.]	[default: None]
+              act_eng_rev: None                          	[default: None]
                  balances: ['M', 'O']                    
          combustion_prods: ['H2O', 'CO', 'CO2', 'Gas']   	[default: None]
-               comp_phase: {'H2O': 1, 'N2': 3, 'O2': 3, 'CO2': 3, 'CO': 3, 'Gas': 3, 'OIL-H': 2, 'OIL-L': 2, 'OIL': 2, 'Coke1': 4, 'Coke2': 4, 'Ci': 4}	[default: None]
+               comp_phase: {'H2O': 1, 'N2': 3, 'O2': 3, 'CO2': 3, 'CO': 3, 'Gas': 3, 'Oil': 2, 'Oil2': 2, 'Oil3': 2, 'Oil4': 2, 'Coke1': 4, 'Coke2': 4, 'Coke3': 4, 'Coke4': 4, 'Ci': 4}	[default: None]
           experiment_type: rto                           
                 flow_rate: 0.00966667                    
-               fuel_comps: ['OIL-H', 'OIL-L']            	[default: None]
-            heat_reaction: [-100.0, -4000.0]             	[default: None]
-            heating_rates: [1.0, 2.0]                    
-               init_coeff: [[1, 'O2', 5], [1, 'OIL', 10], [2, 'O2', 5], [2, 'H2O', 10], [2, 'CO2', 6], [2, 'CO', 3]]	[default: None]
+               fuel_comps: ['OIL-H', 'OIL-L', 'Oil']     	[default: None]
+            heat_reaction: [     0. -10000.      0. -20000.      0. -50000.]	[default: None]
+            heating_rates: [5.0]                         
+               init_coeff: [[1, 'O2', 30], [1, 'Coke1', 10], [1, 'H2O', 2], [2, 'O2', 5], [2, 'CO', 0.3181], [2, 'CO2', 0.75], [2, 'H2O', 1.3815], [3, 'Coke2', 1.3824], [4, 'O2', 0.65], [4, 'CO', 0.1862], [4, 'CO2', 0.5652], [4, 'H2O', 0.2393], [5, 'Coke3', 0.9135], [6, 'O2', 0.9], [6, 'CO', 0.2]]	[default: None]
            isOptimization: False                         
            iso_resolution: 100                           
                      kc_V: 2.895e-05                     
-           kinetics_model: stars                         	[default: arrhenius]
+           kinetics_model: stars                         
                  load_rxn: True                          
                log_params: True                          
-            material_dict: {'O': {'H2O': 1, 'N2': 0, 'O2': 2, 'CO2': 2, 'CO': 1, 'Gas': 1, 'OIL-H': 0, 'OIL-L': 0, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'C': {'H2O': 0, 'N2': 0, 'O2': 2, 'CO2': 1, 'CO': 1, 'Gas': 1, 'OIL-H': 50, 'OIL-L': 30, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}, 'M': {'H2O': 0.018, 'N2': 0.028, 'O2': 0.032, 'CO2': 0.044, 'CO': 0.028, 'Gas': 0.028, 'OIL-H': 0.473, 'OIL-L': 0.236, 'OIL': nan, 'Coke1': nan, 'Coke2': nan, 'Ci': nan}}	[default: None]
+            material_dict: {'O': {'H2O': 1, 'N2': 0, 'O2': 2, 'CO2': 2, 'CO': 1, 'Gas': 1, 'Oil': 0, 'Oil2': nan, 'Oil3': nan, 'Oil4': nan, 'Coke1': nan, 'Coke2': nan, 'Coke3': nan, 'Coke4': nan}, 'C': {'H2O': 0, 'N2': 0, 'O2': 2, 'CO2': 1, 'CO': 1, 'Gas': 1, 'Oil': 50, 'Oil2': nan, 'Oil3': nan, 'Oil4': nan, 'Coke1': nan, 'Coke2': nan, 'Coke3': nan, 'Coke4': nan}, 'M': {'H2O': 0.018, 'N2': 0.028, 'O2': 0.032, 'CO2': 0.044, 'CO': 0.028, 'Gas': 0.028, 'Oil': 0.8, 'Oil2': nan, 'Oil3': nan, 'Oil4': nan, 'Coke1': nan, 'Coke2': nan, 'Coke3': nan, 'Coke4': nan}}	[default: None]
                  max_temp: 750.0                         
                      name: simulation_example            
                   oil_sat: 0.04                          
            optimizer_type: quad_penalty                  
                     phase: simulation                    
                  porosity: 0.36                          
-              pre_exp_fwd: [1.0, 10.0]                   	[default: None]
-              pre_exp_rev: None                          
-               prod_names: [['OIL'], ['CO', 'CO2', 'H2O']]	[default: None]
-        pseudo_fuel_comps: ['Coke1', 'Coke2', 'Ci', 'OIL']	[default: None]
-               reac_names: [['OIL-H', 'O2'], ['OIL', 'O2']]	[default: None]
-           reaction_model: Chen2                         
+              pre_exp_fwd: [1.e+01 1.e+01 1.e-01 1.e-01 1.e-03 1.e-03]	[default: None]
+              pre_exp_rev: None                          	[default: None]
+               prod_names: [['Coke1', 'H2O'], ['CO', 'CO2', 'H2O'], ['Coke2'], ['CO', 'CO2', 'H2O'], ['Coke3'], ['CO', 'CO2']]	[default: None]
+        pseudo_fuel_comps: ['Coke1', 'Coke2', 'Coke3', 'Coke4', 'Ci', 'Oil2', 'Oil3', 'Oil4']	[default: None]
+               reac_names: [['Oil', 'O2'], ['Coke1', 'O2'], ['Coke1'], ['Coke2', 'O2'], ['Coke1'], ['Coke3', 'O2']]	[default: None]
+           reaction_model: Cinar                         
               results_dir: results                       
-          rxn_constraints: [[2, 'CO2', 'CO', 0.5]]       	[default: None]
-         stars_base_model: cinar                         
-           stars_exe_path: 'C:\Program Files (x86)\CMG\STARS\2017.10\Win_x64\EXE\st201710.exe'
+          rxn_constraints: [[2, 'O2', 'CO2', 0.5], [2, 'O2', 'CO', 0.21], [4, 'O2', 'CO2', 0.8695652173913044], [4, 'O2', 'CO', 0.286]]	[default: None]
+         stars_base_model: master                        
+           stars_exe_path: "C:\Program Files (x86)\CMG\STARS\2017.10\Win_x64\EXE\st201710.exe"
          stars_sim_folder: stars                         
 ----------------- End -------------------

@@ -28,7 +28,7 @@ class KineticCellOptions():
 
         # Kinetic cell parameters
         parser.add_argument('--R', type=float, default=8.314, help='universal gas constant')
-        parser.add_argument('--T0', type=float, default=293.15, help='ambient temperature')
+        parser.add_argument('--T0', type=float, default=20.0, help='ambient temperature')
         parser.add_argument('--Ua', type=float, default=1.5e4, help='heat transfer coefficient')
         parser.add_argument('--oil_sat', type=float, default=0.04, help='initial oil saturation')
         parser.add_argument('--kc_V', type=float, default=2.895e-5, help='kinetic cell volume')

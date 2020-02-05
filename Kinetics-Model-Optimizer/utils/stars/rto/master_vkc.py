@@ -105,7 +105,7 @@ class MasterVKC(RtoBase):
         ydict['CO'] = self.SPEC_VALS[:,2][1:]
         ydict['CO2'] = self.SPEC_VALS[:,3][1:]
         ydict['H2O'] = self.SPEC_VALS[:,4][1:]
-        ydict['OIL'] = self.SPEC_VALS[:,5][1:]
+        ydict['Oil'] = self.SPEC_VALS[:,5][1:]
         ydict['Temp'] = self.SPEC_VALS[:,6][1:] - 273.15
 
         return 24*60*self.t, ydict
@@ -143,7 +143,7 @@ RESULTS SIMULATOR STARS 201710
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'CO'
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'CO2'
 *OUTSRF *SPECIAL MOLEFRAC 'PROD' 'H2O'
-*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'OIL'
+*OUTSRF *SPECIAL MOLEFRAC 'PROD' 'Oil'
 *OUTSRF *SPECIAL AVGVAR TEMP
 ** *OUTSRF GRID TEMP X Y SO SG SW VPOROS FPOROS MOLDENO MOLDENG MOLDENW SOLCONC MOLE
               
@@ -241,7 +241,7 @@ PINCHOUTARRAY CON 1
 **TXT
 *ROCKTYPE 3 
 *ROCKCP 20 
-*THCONR 2E6
+*THCONR 26
 
 *THTYPE *IJK 1 1 1:11 1
 	         2 1 1:11 2              
@@ -256,7 +256,7 @@ PINCHOUTARRAY CON 1
         
         numw = 1 # water
         numx = numw + sum([components[c].phase==2 for c in comp_names]) # parent fuel + liquid psuedo components
-        numy = numx + 4 # add N2, CO, CO2, O2 as incompressible gases
+        numy = numx + sum([components[c].phase==3 for c in comp_names]) # add incompressible gases
         ncomp = len(components) # total number of components        
 
         print("""
@@ -283,13 +283,18 @@ PINCHOUTARRAY CON 1
                 file=fileID)
 
         # Print fixed VISCTABLE instead of using AVISC and BVISC data
+        visc1 = ['100000']*(numx - numw)
+        visc2 = ['2084']*(numx - numw)
+        visc3 = ['580']*(numx - numw)
+        visc4 = ['1']*(numx - numw)
+
         print("""
 *VISCTABLE
-10      0    100000
-80      0      2084
-100     0       580
-1000    0         1
-              """, file = fileID)
+10      0    {visc1}
+80      0    {visc2}
+100     0    {visc3}
+1000    0    {visc4}
+              """.format(visc1=' '.join(visc1),visc2=' '.join(visc2),visc3=' '.join(visc3),visc4=' '.join(visc4)), file = fileID)
 
     
     def print_ref_cond(self, fileID):
@@ -408,7 +413,29 @@ PINCHOUTARRAY CON 1
               """, file = fileID)
 
     
-    def print_recurrent(self, fileID, O2_con_in):
+    def print_recurrent(self, fileID, O2_con_in, components):
+        
+        comp_names = components.keys() # get component names
+        phases = [components[c].phase for c in comp_names] # get phases
+        comp_names = [c for _, c in sorted(zip(phases,comp_names))] # sort comp_names according to phase
+
+        incomp = []
+        for c in comp_names:
+            print(c)
+            print(components[c].phase)
+            if components[c].phase==1:
+                incomp.append('0.0')
+            elif components[c].phase==2:
+                incomp.append('0.0')
+            elif components[c].phase==3:
+                if c=='N2':
+                    incomp.append(str(1 - O2_con_in))
+                elif c=='O2':
+                    incomp.append(str(O2_con_in))
+                else:
+                    incomp.append('0.0')
+
+
         print("""
 **  ==============  RECURRENT DATA  ======================
 
@@ -417,7 +444,7 @@ PINCHOUTARRAY CON 1
 *WELL   'INJE'
 *WELL   'PROD'
 *INJECTOR UNWEIGHT 'INJE'
-*INCOMP  GAS  0.  0.  0.  0.  {N2_in}  {O2_in} 
+*INCOMP  GAS  {incomp}
 *TINJW  26.
 *OPERATE  MAX  STG  166.67  CONT
 *GEOMETRY  K  1.5  1.  1.  0.
@@ -429,7 +456,7 @@ PINCHOUTARRAY CON 1
 *PERF  TUBE-END  'PROD'
 1 1 11  1.  OPEN    FLOW-TO  'SURFACE'      
         
-              """.format(N2_in = 1-O2_con_in, O2_in = O2_con_in), file = fileID)
+              """.format(incomp=' '.join(incomp)), file = fileID)
 
     
     def print_heater(self, fileID):

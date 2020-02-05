@@ -16,7 +16,7 @@ class STARSModel(KineticCellBase):
     def modify_cmd_options(parser):
         # STARS Simulation Parameters
         parser.add_argument('--stars_sim_folder', type=str, default='stars', help='folder where run files are written')
-        parser.add_argument('--stars_base_model', type=str, default='cinar', help='which model to use [chen | cinar | kristensen]')
+        parser.add_argument('--stars_base_model', type=str, default='master', help='which model to use [master]')
         parser.add_argument('--stars_exe_path', type=str, default='"C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe"', 
                             help='path where to execute CMG-STARS')
 
@@ -193,7 +193,7 @@ class STARSModel(KineticCellBase):
             Oxygenated fuels will have at least one walk between them and oxygen in the checmical reaction graph. 
         '''
 
-        M = (self.reac_coeff.T).dot(self.prod_coeff) # Calculate adjacency matrix
+        M = np.matmul(np.greater(self.reac_coeff,0).T, np.greater(self.prod_coeff,0)) # Calculate adjacency matrix
         S = np.greater(sp.linalg.expm(M), 0)[self.comp_names.index('O2'), :] # Calculate paths, select O2 row
 
         # If there is at least one rxn_number - 1 walk between O2 and the fuel species
@@ -212,22 +212,23 @@ class STARSModel(KineticCellBase):
         self.params = x # Make sure parameters and mapped parameters are synchronized
         self.map_params(self.params) # Map parameters into reaction variables
 
-        stars_reactions = self.get_stars_reaction_list()
-        stars_components_all = stars.get_component_dict(self.comp_names, self.base_model)
-        stars_components = {}
+        stars_components = stars.get_component_dict(self.comp_names)
+
         for i, name in enumerate(self.comp_names):
-            stars_components[name] = stars_components_all[name]
             stars_components[name].CMM = [self.balance_dict['M'][i]]
 
-        # Run stars runfile
-        IC_dict = {'Oil': IC[self.comp_names.index('OIL-H')], 'O2': IC[self.comp_names.index('O2')]}
+        stars_reactions = self.get_stars_reaction_list(stars_components)
 
+        # Create dictionary of initial conditions
+        IC_dict = {'Oil': IC[self.comp_names.index('Oil')], 'O2': IC[self.comp_names.index('O2')], 'Temp': IC[-1]}
+
+        # Create dictionary of parameters for writing the runfile
         if self.isOptimization:
             write_dict = {
                         'COMPS': stars_components, 
                         'REACTS': stars_reactions, 
                         'IC_dict': IC_dict, 
-                        'HR': hr,
+                        'HR': hr*60,
                         'TEMP_MAX': self.max_temp[hr],
                         'TFINAL': self.time_line[hr][-1],
                         'O2_con_in': self.O2_con_in[hr]
@@ -237,31 +238,46 @@ class STARSModel(KineticCellBase):
                     'COMPS': stars_components, 
                     'REACTS': stars_reactions, 
                     'IC_dict': IC_dict, 
-                    'HR': hr,
+                    'HR': hr*60,
                     'TEMP_MAX': self.max_temp,
                     'TFINAL': self.Tspan[-1],
-                    'O2_con_in': 0.2070
+                    'O2_con_in': 0.25
                     }
 
+
+        # Run stars runfile
         self.vkc_model.write_dat_file(**write_dict)
-        self.vkc_model.run_dat_file(self.exe_path, self.cd_path, self.base_filename)
+        self.vkc_model.run_dat_file(self.exe_path, self.cd_path)
         self.vkc_model.parse_stars_output()
 
-        t, ydict = self.vkc_model.get_stars_output()
-        spec_names_temp = self.comp_names + 'Temp'
-        y = np.stack([ydict[name] for name in spec_names_temp]) # assemble output vector
+        # Parse output from STARS
+        t, ydict = self.vkc_model.get_reaction_dict()
+        stars_spec_names = ['Oil', 'O2', 'H2O', 'CO', 'CO2', 'N2', 'Temp']
+        y = np.stack([ydict[c] if c in stars_spec_names else np.zeros_like(ydict['Temp']) for c in self.comp_names+['Temp']]) # assemble output vector
 
         return t, y
 
     
-    def get_stars_reaction_list(self):
+    def get_stars_reaction_list(self, components):
+        req_comps = ['Oil', 'O2', 'H2O', 'CO', 'CO2', 'N2'] # required components
+        comp_names_aug = self.comp_names + [c for c in req_comps if c not in self.comp_names]
+        phases = [components[c].phase for c in comp_names_aug] # get phases
+        comp_names = [c for _, c in sorted(zip(phases, comp_names_aug))] # sort comp_names according to phase
+        comp_names_inds = [comp_names_aug.index(c) for c in comp_names]
+
         reaction_list = []
+        num_pad = len(comp_names_aug) - len(self.comp_names)
         for i in range(self.num_rxns):
+            storeac = np.pad(self.reac_coeff[i,:],(0,num_pad))
+            stoprod = np.pad(self.prod_coeff[i,:],(0,num_pad))
+            rorder = np.pad(self.reac_order[i,:],(0,num_pad))
+
             reaction_list.append(stars.Kinetics(NAME="RXN"+str(i+1),
-                                    STOREAC=self.reac_coeff[i,:].tolist(),
-                                    STOPROD=self.prod_coeff[i,:].tolist(),
-                                    RORDER=self.reac_order[i,:].tolist(),
-                                    FREQFAC=self.pre_exp_fwd[i], EACT=self.act_eng_fwd[i],
+                                    STOREAC=storeac[comp_names_inds].tolist(),
+                                    STOPROD=stoprod[comp_names_inds].tolist(),
+                                    RORDER=rorder[comp_names_inds].tolist(),
+                                    FREQFAC=self.pre_exp_fwd[i], 
+                                    EACT=self.act_eng_fwd[i],
                                     RENTH=self.heat_reaction[i])
                                     )
         return reaction_list
@@ -433,42 +449,55 @@ class STARSModel(KineticCellBase):
         Solve balance to fill in unknown stoichiometric coefficients for non-fuel species.
 
         '''
-        
-        # extract non-fuel species
-        comp_inds, comps = zip(*[(i,c) for i, c in enumerate(self.comp_names) if c not in self.fuel_names+self.pseudo_fuel_comps])
-        comp_inds, comps = list(comp_inds), list(comps)
+
+        # Set oxygen of unoxidized fuels to zero
+        oxy_fuels = self.get_oxy_fuels()
+        unoxy_fuel_inds = [i for i,c in enumerate(self.comp_names) if c in self.fuel_names and c not in oxy_fuels]
+        self.balance_dict['O'][unoxy_fuel_inds] = 0
 
         # Create oxygen content vector to act as RHS matrix
-        O_mat = np.expand_dims(self.balance_dict['O'][comp_inds], 0)
+        # Zero out the nan entries since those correspond to oxidized pseudocomponents
+        A = np.nan_to_num(np.expand_dims(self.balance_dict['O'], 0),0)
 
         for r in self.map_rxns_oxy:
-            # Get non-fuel species independent species
-            independent_inds = [comps.index(c) for c in enumerate(self.get_independent_species(r)) if c in comps]
+            # Get indices for reactants and products
+            reac_inds = [i for i, c in enumerate(self.comp_names) if c in self.reac_names[r]]
+            prod_inds = [i for i, c in enumerate(self.comp_names) if c in self.prod_names[r]]
 
-            # Get indices of species in the reaction 
-            reac_inds = [i for i, c in zip(comp_inds, comps) if c in self.reac_names[r]]
-            prod_inds = [i for i, c in zip(comp_inds, comps) if c in self.prod_names[r]]
-            
-            # Restrict oxygen matrix to be for relevant components
-            O_mat_new = O_mat
-            O_mat_new[:,prod_inds] *= -1 # For product species
-            O_mat_new = O_mat_new[:,comp_inds] # Restrict to non-fuel components
+            # Get indices for 
+            reac_oxy_inds = [i for i, c in enumerate(self.comp_names) if c in self.reac_names[r] and c not in self.fuel_names]
+            prod_oxy_inds = [i for i, c in enumerate(self.comp_names) if c in self.prod_names[r] and c not in self.fuel_names]
+
+            # Negate product columns
+            A_temp = A
+            A_temp[:,prod_inds] *= -1
+
+            # Enforce equality constraints
+            M = self.get_constraint_matrix(r)
+            AM = np.dot(A_temp, M)
 
             # Get independent species
-            coeff_temp = self.reac_coeff[r,comp_inds] + self.prod_coeff[r,comp_inds]
-            coeff_temp = coeff_temp[independent_inds]
+            independent_specs = self.get_independent_species(r)
+            independent_inds = [self.comp_names.index(c) for c in independent_specs ]
 
-            # Enforce constraints between variables
-            M = self.get_constraint_matrix(r)
-            Mnew = M[comp_inds, independent_inds]
-            AM = np.dot(O_mat_new, Mnew)
+            # Set coefficients for fuel species to zero
+            reac_coeff_temp = self.reac_coeff[r,:]
+            reac_coeff_temp[self.fuel_inds] = 0
+            reac_coeff_temp = reac_coeff_temp[independent_inds]
+            prod_coeff_temp = self.prod_coeff[r,:]
+            prod_coeff_temp[self.fuel_inds] = 0
+            prod_coeff_temp = prod_coeff_temp[independent_inds]
 
-            # Solve nnls problem for indepent coefficients
-            coeff_temp = self.solve_nnls_problem(AM, coeff_temp)
-            all_coeffs = np.dot(Mnew, coeff_temp)
+            # Solve for coefficients of independent non-fuel species
+            coeff_independent = self.solve_nnls_problem(AM,  reac_coeff_temp + prod_coeff_temp)
+            
+            # Map independent species into all species
+            coeff_all = np.dot(M, coeff_independent)
+            coeff_all = np.maximum(coeff_all, 0.01)
 
-            self.reac_coeff[r,reac_inds] = all_coeffs[:,reac_inds]
-            self.prod_coeff[r,prod_inds] = all_coeffs[:,prod_inds]
+            # Extract indices from calculated coefficients
+            self.reac_coeff[r,reac_oxy_inds] = coeff_all[reac_oxy_inds]
+            self.prod_coeff[r,prod_oxy_inds] = coeff_all[prod_oxy_inds]
     
 
     def balance_solver(self):
@@ -493,9 +522,9 @@ class STARSModel(KineticCellBase):
 
         # Assemble coefficient matrix
         A = np.stack([self.reac_coeff[r,:] - self.prod_coeff[r,:] for r in self.map_rxns_material])
-        print(A)
         for b in self.balances:
-            self.balance_dict[b] = self.solve_nnls_problem(A, self.balance_dict[b])
+            if np.isnan(np.sum(self.balance_dict[b])): # check if any unknowns for balance b
+                self.balance_dict[b] = np.maximum(self.solve_nnls_problem(A, self.balance_dict[b]), 1e-3)
 
 
     def coeff_solver(self):
@@ -521,10 +550,11 @@ class STARSModel(KineticCellBase):
             # Solve coefficients for independent species
             independent_specs = self.get_independent_species(r)
             independent_inds = [self.comp_names.index(c) for c in independent_specs]
-            coeff_independent = self.solve_nnls_problem(AM,  self.reac_coeff[r,independent_inds] - self.prod_coeff[r,independent_inds])
+            coeff_independent = self.solve_nnls_problem(AM,  self.reac_coeff[r,independent_inds] + self.prod_coeff[r,independent_inds])
             
             # Map independent species into all species
             coeff_all = np.dot(M, coeff_independent)
+            coeff_all = np.maximum(coeff_all, 0.01)
 
             # Extract indices from calculated coefficients
             self.reac_coeff[r,reac_inds] = coeff_all[reac_inds]

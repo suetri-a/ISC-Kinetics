@@ -44,12 +44,12 @@ class RtoBase(ABC):
         self.print_IO_control(fileID)
         self.print_grid(fileID)
         self.print_fluid(fileID, COMPS)
-        self.print_reactions(fileID, REACTS)
+        self.print_reactions(fileID, REACTS, COMPS)
         self.print_ref_cond(fileID)
         self.print_rock_fluid(fileID)
         self.print_initial_cond(fileID, IC_dict)
         self.print_numerical(fileID)
-        self.print_recurrent(fileID, O2_con_in)
+        self.print_recurrent(fileID, O2_con_in, COMPS)
         self.print_heater(fileID)
         self.print_heating_ramp(fileID, HR, TFINAL, TEMP_MAX)
         fileID.close()
@@ -89,22 +89,25 @@ class RtoBase(ABC):
         pass
     
 
-    def print_reactions(self, fileID, kinetics):
+    def print_reactions(self, fileID, kinetics, components):
         print('** ==============  REACTIONS  ======================', file = fileID)
         
         # Loop over reactions in list
         for r in kinetics:
             r.print_rxn(fileID)
+
+        num_k_vals = len([c for c in components.keys() if components[c].phase in [1,2]])
+        kvals = ['0']*num_k_vals
         
         # Print K value table
         print("""
-*KV1 0 0 
-*KV2 0 0 
-*KV3 0 0 
-*KV4 0 0 
-*KV5 0 0 
+*KV1 {kvals} 
+*KV2 {kvals}
+*KV3 {kvals}
+*KV4 {kvals}
+*KV5 {kvals}
 
-                """, file = fileID)
+                """.format(kvals=' '.join(kvals)), file = fileID)
             
 
     @abstractmethod
@@ -124,7 +127,7 @@ class RtoBase(ABC):
         pass
 
     @abstractmethod
-    def print_recurrent(self, fileID, O2_con_in):
+    def print_recurrent(self, fileID, O2_con_in, components):
         pass
 
     @abstractmethod
@@ -162,9 +165,9 @@ class RtoBase(ABC):
     def parse_stars_output(self):
 
         # Open STARS output files
-        fid_temp = open(self.input_file_name + '.irf', 'rb')
+        fid_temp = open(self.folder_name + self.input_file_name + '.irf', 'rb')
         FID = [line.decode('utf-8', errors='ignore') for line in fid_temp]
-        FID_bin = open(self.input_file_name + '.mrf', 'rb')
+        FID_bin = open(self.folder_name + self.input_file_name + '.mrf', 'rb')
 
         # Initialize variables/objects for parsing data
         i = 0
