@@ -2,6 +2,7 @@ import autograd.numpy as np
 from abc import ABC, abstractmethod
 import argparse
 import os
+import sys
 
 import matplotlib.pyplot as plt
 from scipy.optimize import fminbound
@@ -30,28 +31,11 @@ class KineticCellBase(ABC):
         self.results_dir = os.path.join(opts.results_dir, opts.name,'')
         mkdirs([self.results_dir])
 
-        #### RUN OPTIONS
-        self.V = opts.porosity * opts.kc_V
-        self.q = opts.flow_rate # [580 cm^3/min]
-        self.P = opts.O2_partial_pressure # O2 partial pressure 
-        self.R = opts.R 
-        self.T0 = opts.T0
-        self.O2_con_sim = 0.25
-
-        #### SIMULATION RESULTS
-        self.reaction_model = opts.reaction_model
-        self.O2_consumption = None
-        self.y = [] # solutions
-        self.Temperature = None
-        self.activation_energy = None
-        self.conversion = None
-
         #### Initialize reaction information
+        self.reaction_model = opts.reaction_model
         self.log_params = opts.log_params
         self.reac_names, self.prod_names = opts.reac_names, opts.prod_names
-        self.comp_names = list(set([spec for rxn in self.reac_names for spec in rxn]).union(
-            set([spec for rxn in self.prod_names for spec in rxn])))
-        self.comp_phase = [opts.comp_phase[comp] for comp in self.comp_names]
+        self.comp_names = list(set([spec for rxn in self.reac_names+self.prod_names for spec in rxn]))
         self.num_rxns, self.num_comp = len(self.reac_names), len(self.comp_names)
         self.rxn_constraints, self.init_coeff = opts.rxn_constraints, opts.init_coeff
 
@@ -65,66 +49,42 @@ class KineticCellBase(ABC):
         self.pseudo_fuel_comps = [f for f in opts.pseudo_fuel_comps if f in self.comp_names]
         self.fuel_inds = [self.comp_names.index[r] for r in opts.reac_names if r in opts.fuel_comps or r in opts.pseudo_fuel_comps]
 
-        # Optimization-related information
-        if opts.isOptimization:
-            self.IC = None
-            self.heating_rates = None
-            self.num_heats = None
-            self.time_line = None
-            self.O2_con = None
+        # Parameter bounds dictionary
+        self.lb = {'reaccoeff': opts.stoic_coeff_lower, 'prodcoeff': opts.stoic_coeff_lower, 
+                    'reacorder': opts.rxn_order_lower, 'prodorder': opts.rxn_order_lower,
+                    'preexpfwd': opts.pre_exp_lower, 'preexprev': opts.pre_exp_lower,
+                    'actengfwd': opts.act_eng_lower, 'actengrev': opts.act_eng_lower, 
+                    'balance-M': 0, 'balance-O': 0, 'balance-C': 0}
+        self.ub = {'reaccoeff': opts.stoic_coeff_upper, 'prodcoeff': opts.stoic_coeff_upper, 
+                    'reacorder': opts.rxn_order_upper, 'prodorder': opts.rxn_order_upper,
+                    'preexpfwd': opts.pre_exp_upper, 'preexprev': opts.pre_exp_upper,
+                    'actengfwd': opts.act_eng_upper, 'actengrev': opts.act_eng_upper, 
+                    'balance-M': np.inf, 'balance-O': np.inf, 'balance-C': np.inf}
 
-            # Parameter bounds dictionary
-            self.lb = {'reaccoeff': opts.stoic_coeff_lower, 'prodcoeff': opts.stoic_coeff_lower, 
-                        'reacorder': opts.rxn_order_lower, 'prodorder': opts.rxn_order_lower,
-                        'preexpfwd': opts.pre_exp_lower, 'preexprev': opts.pre_exp_lower,
-                        'actengfwd': opts.act_eng_lower, 'actengrev': opts.act_eng_lower, 
-                        'balance-M': 0, 'balance-O': 0, 'balance-C': 0}
-            self.ub = {'reaccoeff': opts.stoic_coeff_upper, 'prodcoeff': opts.stoic_coeff_upper, 
-                        'reacorder': opts.rxn_order_upper, 'prodorder': opts.rxn_order_upper,
-                        'preexpfwd': opts.pre_exp_upper, 'preexprev': opts.pre_exp_upper,
-                        'actengfwd': opts.act_eng_upper, 'actengrev': opts.act_eng_upper, 
-                        'balance-M': np.inf, 'balance-O': np.inf, 'balance-C': np.inf}
-            
-        else:
-            self.max_temp = opts.max_temp
-            self.heating_rates = [h/60 for h in opts.heating_rates] # convert HR to /min
-            self.num_heats = len(self.heating_rates)
-            self.Tspan = opts.Tspan
+        self.initialize_parameters(opts)
 
-            self.IC = [] 
-            for _ in range(self.num_heats):
-                IC_temp = []
-                for spec in self.comp_names:
-                    if spec == 'O2' and opts.IC_dict[spec] == None:
-                        IC_temp.append(self.O2_con_sim)
-                    else:
-                        IC_temp.append(opts.IC_dict[spec])
-                IC_temp.append(opts.T0)
-                self.IC.append(np.array(IC_temp))
     
-
     ###########################################################
     #### BEGIN REQUIRED METHODS FOR EACH MODEL
     ###########################################################
     
     @abstractmethod
-    def init_params(self, opts):
+    def initialize_parameters(self, opts):
         '''
         Initialize parameters vector for the kinetic cell optimization
 
             param_types - type of the parameters with corresponding information (list of lists) 
             Key:
-            'preexp' - Pre-exponential factors (frequency factors). Stored as log or the value depending on log_params. 
+            'preexpfwd', 'preexprev' - Pre-exponential factors (frequency factors). Stored as log or the value depending on log_params. 
                 ['preexp', rxn#]
-            'acteng' - Activation energy. Stored as log or the value depending on log_params.
+            'actengfwd', 'actengrev' - Activation energy. Stored as log or the value depending on log_params.
                 ['acteng', rxn#]
             'stoic' - Stoichiometric coefficients. Format:
                 ['stoic', rxn#, species]
-            'order' - Reaction order. Format:
-                ['order', species]
-            'oilsat' - Initial oil saturation. Format:
-                ['oilsat']
+
             Note: the rxn# in the parameter vector is 0-indexed for convenience.
+
+        These will be stored in the self.param_types list.
 
         All other factors are either fixed a priori or calculated based on the 
             free parameters for the system.
@@ -135,19 +95,38 @@ class KineticCellBase(ABC):
 
 
     @abstractmethod
-    def run_RTO_experiment(self, x, heating_rate, IC):
+    def map_parameters(self, x):
+        '''
+        Map parameters vector into components needed to run simulation.
+
+        Input: 
+            x - parameter vector
+        
+        Output:
+            reac_coeffs - reactant coefficients
+            prod_coeffs - product coefficients
+            reac_orders - reactant orders
+            prod_orders - product orders
+            act_energy - activation energies
+            preexp_fac - preexponential factors
+
+        '''
+
+        pass
+    
+
+    @abstractmethod
+    def run_RTO_simulation(self, REAC_COEFFS=None, PROD_COEFFS=None, REAC_ORDERS=None, PROD_ORDERS=None,
+                            ACT_ENERGY=None, PREEXP_FAC=None, HEATING_DATA=None, IC=None):
         '''
         Wrapper to execute simulation of a single RTO experiment with entered heating rates. 
 
         Inputs:
-            x - parameters vector (the simulator in each type of kinetic cell must
-                map from the parameters vector to parameters usable for simulation)
-            heating_rate - heating rate for RTO experiment
-            IC - initial condition needed to feed into the simulator
-        
+            ########TO FILL IN###########
+
         Returns:
             t - time vector
-            y - [#Components, #Time steps] array as result from RTO experiment simulation
+            y - dict{component name: np.array} dictionary
 
         '''
 
@@ -155,56 +134,40 @@ class KineticCellBase(ABC):
 
     
     @abstractmethod
-    def clone_from_data(self, data_cell):
-        pass
-
-
-    @abstractmethod
-    def compute_residuals(self, x):
+    def logging_model(self, x, log_file):
+        '''
+        Callback function specific to the model. Optional to implement.
+        '''
         pass
 
 
     ###########################################################
     #### END REQUIRED METHODS
     ###########################################################
-    
-    def run_RTO_experiments(self, params, return_vals = False):
-        '''
-        Short wrapper to run the heating rates
-        '''
-        self.t = []
-        self.y = []
-        for i, h in enumerate(self.heating_rates):
-            t, y = self.run_RTO_experiment(params, h, self.IC[i])
-            self.t.append(t)
-            self.y.append(y)
-
-        if return_vals:
-            return self.y
 
 
-    def get_O2_consumption(self, x):
+    def get_O2_consumption(self, x, heating_data, IC):
         '''
         Method to return O2 consumption when handed parameters x
 
         Inputs: 
             x - parameters vector
+            heating_data - data structure to feed into heating data term of sefl.run_RTO_simulation()
+            IC - dictionary of initial conditions. Must contain at least 'Oil', 'O2', and 'Temp'. 
 
         Returns:
             O2_consumption = [#Heating rates, #Time steps] array of O2 consumption curves
 
         '''
-        
-        if self.isOptimization:
-            y_temp = self.run_RTO_experiments(x, return_vals=True)
-            self.O2_consumption = np.stack([self.O2_con[hr] - y_temp[i][self.comp_names.index('O2'),:] for i, hr in enumerate(self.heating_rates)])
-        
-        else:
-            self.run_RTO_experiments(x)
-            self.O2_consumption = [self.O2_con_sim - y[self.comp_names.index('O2'),:] for y in self.y]
-            self.Temperature =[y[-1,:] for y in self.y]
-        
-        return self.O2_consumption
+        # Check if parameters are different from current parameters or O2 consumption is empty
+        reac_coeff, prod_coeff, reac_order, prod_order, e_act, pre_exp_fac = self.map_parameters(x)
+        print('Running RTO simulation....')
+        t, y_dict = self.run_RTO_simulation(REAC_COEFFS=reac_coeff, PROD_COEFFS=prod_coeff, REAC_ORDERS=reac_order,
+                                            PROD_ORDERS=prod_order, ACT_ENERGY=e_act, PREEXP_FAC=pre_exp_fac,
+                                            HEATING_DATA=heating_data, IC=IC)
+        print('Finished RTO simulation!')
+        O2_consumption = np.maximum(IC['O2'] - y_dict['O2'], 0)
+        return t, O2_consumption
 
 
     def init_reaction_matrices(self):
@@ -243,153 +206,162 @@ class KineticCellBase(ABC):
         return reac_coeff, prod_coeff, reac_order, prod_order
 
 
-    def plot_O2_data(self):
+    def plot_data(self, Time, Temp, O2):
         '''
         Plot O2 data from the simulated or stored RTO experiments. 
 
+        Inputs:
+            Time - dictionary with keys [heating rate] time vectors
+            Temp - dictionary with keys [heating rate] temperature vectors
+            O2 - dictionary with keys [heating rate] O2 consumption vectors
+
         '''
-
-        O2_consumption = self.get_O2_consumption(self.params)
-
+        
         O2_fig, O2_plot = plt.subplots()
-        for i in range(len(self.heating_rates)):
-            O2_plot.plot(self.t[i], O2_consumption[i])
+        for hr in Time.keys():
+            O2_plot.plot(Time[hr], O2[hr])
+
         O2_plot.set_xlabel('Time, min')
         O2_plot.set_ylabel(r'$O_2$ Consumption [mol]')
-        O2_plot.legend(['{} C/min'.format(np.around(r*60, decimals = 2)) for r in self.heating_rates]) 
+        
 
         temp_fig, temp_plot = plt.subplots()
-        for i in range(len(self.heating_rates)):
-            temp_plot.plot(self.t[i], self.Temperature[i])
+        for hr in Time.keys():
+            temp_plot.plot(Time[hr], Temp[hr])
+        
         temp_plot.set_xlabel('Time, min') 
         temp_plot.set_ylabel('Temperature, C')
-        temp_plot.legend(['{} C/min'.format(np.around(r*60, decimals = 2)) for r in self.heating_rates]) 
+        
+        O2_plot.legend(['{} C/min'.format(np.around(r, decimals = 2)) for r in Time.keys()])
+        temp_plot.legend(['{} C/min'.format(np.around(r, decimals = 2)) for r in Time.keys()])
 
         return O2_fig, temp_fig
 
 
-    def save_plots(self, O2_filename = 'O2_data.png', temp_filename = 'temperature_data.png'):
-        O2_fig, temp_fig = self.plot_O2_data()
-        O2_fig.savefig(self.results_dir + O2_filename)
-        temp_fig.savefig(self.results_dir + temp_filename)
+    def save_plots(self, Time, Temp, O2, O2_filename = 'O2_data.png', temp_filename = 'temperature_data.png'):
+        O2_fig, temp_fig = self.plot_data(Time, Temp, O2)
+        O2_fig.savefig(O2_filename)
+        temp_fig.savefig(temp_filename)
 
 
-    def show_plots(self):
-        O2_fig, temp_fig = self.plot_O2_data()
+    def show_plots(self, Time, Temp, O2):
+        O2_fig, temp_fig = self.plot_data(Time, Temp, O2)
         O2_fig.show()
         temp_fig.show()
 
 
-    def calculate_act_energy(self, T_int = 1000, num_interp = 100, method='Friedman', est_range = [-1e2, 1e6]):
-        '''
-        Isoconvertional method activation energy solver. Code adapted from Chen (2012).
+    # Calculate activation energy from simulated data
 
-        Inputs:
-            T_int - number of time intervals for the time_line variable
-            num_interp - number of points to interpolate the activation energy
-            method - which type of activation energy computation to used
-            est_range - estimated range for the activation energies
+    # def calculate_act_energy(self, T_int = 1000, num_interp = 100, method='Friedman', est_range = [-1e2, 1e6]):
+    #     '''
+    #     Isoconvertional method activation energy solver. Code adapted from Chen (2012).
 
-        '''
+    #     Inputs:
+    #         T_int - number of time intervals for the time_line variable
+    #         num_interp - number of points to interpolate the activation energy
+    #         method - which type of activation energy computation to used
+    #         est_range - estimated range for the activation energies
 
-        if len(self.y) == 0:
-            raise Exception('Must execute run_solver() or load data before activation energy can be calculated.')
+    #     '''
 
-        x = np.linspace(0.001, 0.999, num_interp)
+    #     if len(self.y) == 0:
+    #         raise Exception('Must execute run_solver() or load data before activation energy can be calculated.')
 
-        O2_total = np.zeros(self.num_heats)
-        Temp_x = np.zeros((num_interp, self.num_heats))
-        x_Time = np.zeros((num_interp, self.num_heats))
+    #     x = np.linspace(0.001, 0.999, num_interp)
 
-        for i in range(self.num_heats):
-            index = np.where(self.O2_consumption[i,:]>1e-3)[0]
-            if index.shape[0] < 2:
-                index_start = 0
-                index_end = self.O2_consumption[i,:].shape[0]
-            else:
-                index_start = index[0]
-                index_end = index[-1]
+    #     O2_total = np.zeros(self.num_heats)
+    #     Temp_x = np.zeros((num_interp, self.num_heats))
+    #     x_Time = np.zeros((num_interp, self.num_heats))
+
+    #     for i in range(self.num_heats):
+    #         index = np.where(self.O2_consumption[i,:]>1e-3)[0]
+    #         if index.shape[0] < 2:
+    #             index_start = 0
+    #             index_end = self.O2_consumption[i,:].shape[0]
+    #         else:
+    #             index_start = index[0]
+    #             index_end = index[-1]
             
-            Temp_temp = self.temp_line[index_start:index_end,i]
+    #         Temp_temp = self.temp_line[index_start:index_end,i]
             
-            Time_temp = self.time_line[index_start:index_end]
-            Time_span_temp = np.append(Time_temp[1:], [0]) - Time_temp
-            Time_span = np.append(Time_span_temp[:-1], Time_span_temp[-2])
+    #         Time_temp = self.time_line[index_start:index_end]
+    #         Time_span_temp = np.append(Time_temp[1:], [0]) - Time_temp
+    #         Time_span = np.append(Time_span_temp[:-1], Time_span_temp[-2])
             
-            isoconvertionO2 = self.O2_consumption[i,index_start:index_end]*Time_span
-            O2_total[i] = np.sum(isoconvertionO2)
+    #         isoconvertionO2 = self.O2_consumption[i,index_start:index_end]*Time_span
+    #         O2_total[i] = np.sum(isoconvertionO2)
             
-            xx = np.cumsum(isoconvertionO2) / O2_total[i]
+    #         xx = np.cumsum(isoconvertionO2) / O2_total[i]
             
-            Temp_x[:,i] = np.interp(x, xx, Temp_temp)
-            x_Time[:,i] = np.interp(x, xx, Time_temp)
+    #         Temp_x[:,i] = np.interp(x, xx, Temp_temp)
+    #         x_Time[:,i] = np.interp(x, xx, Time_temp)
 
 
-        def phiEnergy(Ex, Temp_x, x_Time):
-            '''
-            Objective function for recovering activation energy
+    #     def phiEnergy(Ex, Temp_x, x_Time):
+    #         '''
+    #         Objective function for recovering activation energy
 
-            '''
+    #         '''
 
-            J_E_Tt = np.trapz(np.exp(-Ex/(self.opts.R*Temp_x)), x = x_Time, axis = 0)
-            phi_Ex = np.sum(np.outer(J_E_Tt, 1 / J_E_Tt)) - self.num_heats
+    #         J_E_Tt = np.trapz(np.exp(-Ex/(self.opts.R*Temp_x)), x = x_Time, axis = 0)
+    #         phi_Ex = np.sum(np.outer(J_E_Tt, 1 / J_E_Tt)) - self.num_heats
 
-            return phi_Ex
+    #         return phi_Ex
 
-        # Friedman
-        if method == 'Friedman':
-            dxdt = np.zeros((num_interp, self.num_heats))
-            for i in range(self.num_heats):
-                f = interp1d(self.time_line, self.consumption_O2[:,i], kind = 'cubic')
-                dxdt[:,i] = f(x_Time[:, i]) / O2_total[i]
-            ln_dxdt = np.log(dxdt)
+    #     # Friedman
+    #     if method == 'Friedman':
+    #         dxdt = np.zeros((num_interp, self.num_heats))
+    #         for i in range(self.num_heats):
+    #             f = interp1d(self.time_line, self.consumption_O2[:,i], kind = 'cubic')
+    #             dxdt[:,i] = f(x_Time[:, i]) / O2_total[i]
+    #         ln_dxdt = np.log(dxdt)
 
-            self.activation_energy = np.zeros(num_interp)
+    #         self.activation_energy = np.zeros(num_interp)
 
-            for j in range(num_interp):
-                LineSlope = np.polyfit(-1/(self.opts.R*Temp_x[j, :]), ln_dxdt[j ,:], 1)
-                self.activation_energy[j] = LineSlope[0]
+    #         for j in range(num_interp):
+    #             LineSlope = np.polyfit(-1/(self.opts.R*Temp_x[j, :]), ln_dxdt[j ,:], 1)
+    #             self.activation_energy[j] = LineSlope[0]
             
-            self.conversion = x
+    #         self.conversion = x
 
 
-        # Vyazovkin
-        elif method == 'Vyazovkin 1997':
-            delta_t = num_interp
-            Cal_Ex = np.zeros(num_interp-1)
-            for index_x in range(1,num_interp):
-                if index_x <= delta_t:
-                    def f1(Ex): return phiEnergy(Ex, Temp_x[:index_x,:], xTime[:index_x,:])
-                    Cal_Ex[index_x-1] = fminbound(f1, est_range[0], est_range[1])
-                else:
-                    def f2(Ex): return phiEnergy(Ex,Temp_x[index_x-delta_t:index_x, :], x_Time[index_x-delta_t:index_x,:])
-                    Cal_Ex[index_x-1] = fminbound(f2, est_range[0], est_range[1])
+    #     # Vyazovkin
+    #     elif method == 'Vyazovkin 1997':
+    #         delta_t = num_interp
+    #         Cal_Ex = np.zeros(num_interp-1)
+    #         for index_x in range(1,num_interp):
+    #             if index_x <= delta_t:
+    #                 def f1(Ex): return phiEnergy(Ex, Temp_x[:index_x,:], xTime[:index_x,:])
+    #                 Cal_Ex[index_x-1] = fminbound(f1, est_range[0], est_range[1])
+    #             else:
+    #                 def f2(Ex): return phiEnergy(Ex,Temp_x[index_x-delta_t:index_x, :], x_Time[index_x-delta_t:index_x,:])
+    #                 Cal_Ex[index_x-1] = fminbound(f2, est_range[0], est_range[1])
 
-            self.activation_energy = Cal_Ex
-            self.conversion = x[1:]
-
-
-        elif method == 'Vyazovkin 2001':
-            delta_t = 2
-            Cal_Ex = np.zeros(num_interp-1)
-            for index_x in range(1,num_interp):
-                if index_x < delta_t:
-                    def f1(Ex): return phiEnergy(Ex, Temp_x[:index_x+1,:], x_Time[:index_x+1,:])
-                    Cal_Ex[index_x-1] = fminbound(f1, est_range[0], est_range[1])
-                else:
-                    def f2(Ex): return phiEnergy(Ex, Temp_x[index_x-delta_t:index_x, :], x_Time[index_x-delta_t:index_x, :])
-                    Cal_Ex[index_x-1] = fminbound(f2, est_range[0], est_range[1])
-
-            self.activation_energy = Cal_Ex
-            self.conversion = x[1:]
-
-        else:
-            raise Exception('Invalid activation energy option.')
-            self.activation_energy = 0
-            self.conversion = 0
+    #         self.activation_energy = Cal_Ex
+    #         self.conversion = x[1:]
 
 
-    ##### REACTION OPTIMIZATION FUNCTIONS #####
+    #     elif method == 'Vyazovkin 2001':
+    #         delta_t = 2
+    #         Cal_Ex = np.zeros(num_interp-1)
+    #         for index_x in range(1,num_interp):
+    #             if index_x < delta_t:
+    #                 def f1(Ex): return phiEnergy(Ex, Temp_x[:index_x+1,:], x_Time[:index_x+1,:])
+    #                 Cal_Ex[index_x-1] = fminbound(f1, est_range[0], est_range[1])
+    #             else:
+    #                 def f2(Ex): return phiEnergy(Ex, Temp_x[index_x-delta_t:index_x, :], x_Time[index_x-delta_t:index_x, :])
+    #                 Cal_Ex[index_x-1] = fminbound(f2, est_range[0], est_range[1])
+
+    #         self.activation_energy = Cal_Ex
+    #         self.conversion = x[1:]
+
+    #     else:
+    #         raise Exception('Invalid activation energy option.')
+    #         self.activation_energy = 0
+    #         self.conversion = 0
+
+
+    ##### OPTIMIZATION REALTED FUNCTIONS #####
     def get_bounds(self): 
         '''
         This function calculates the bounds for the global optimizer.
@@ -406,73 +378,117 @@ class KineticCellBase(ABC):
             if param_type[0] == 'preexp': # pre-exponenial factors
                 if self.log_params:
                     lb.append(np.log(1e-2))
-                    ub.append(np.log(1e6))
+                    ub.append(np.log(5e2))
                 else:
                     lb.append(1e-2)
-                    ub.append(1e6)
+                    ub.append(5e2)
             
             elif param_type[0] == 'acteng': # activation energies
                 if self.opts.log_params:
                     lb.append(np.log(1e3))
                     ub.append(np.log(1e6))
                 else:
-                    lb.append(1e-3)
+                    lb.append(1e3)
                     ub.append(1e6)
             
             elif param_type[0] in ['stoic', 'order']: # stoic. coefficients, reaction orders
-                lb.append(1e-2)
-                ub.append(2e1)
+                lb.append(1e-1)
+                ub.append(2.5e1)
             
             elif param_type[0] == 'oilsat': # initial oil saturation
                 lb.append(0)
                 ub.append(2e-1)
 
-        return lb, ub
+        bnds = [(lb[i], ub[i]) for i in range(len(self.param_types))]
+
+        return bnds
 
     
-    ##### CONVENIENCE FUNCTIONS
-    def print_params(self):
+    def compute_residuals(self, x):
+        reac_coeffs, prod_coeffs, _, _, _, _ = self.map_parameters(x)
+        res = []
+
+        # Balances matrix
+        A = np.stack([self.balance_dict[B] for B in self.opts.balances])
+
+        for i in range(self.num_rxns):
+            res.append(np.sum((A.dot(reac_coeffs[i,:].T - prod_coeffs[i,:].T))**2))
+
+        return res
+
+
+    def log_status(self, x, log_file):
+        '''
+        Callback function to log information specific to the kinetic cell model.
+        '''
+
+        print('Current parameter values:', file=log_file)
+        self.print_params(x, fileID=log_file)
+
+        print('Current reaction:', file=log_file)
+        self.print_reaction(x, fileID=log_file)
+
+        self.logging_model(x, log_file)
+
+
+
+    def print_params(self, x, fileID=sys.stdout):
         '''
         Output formatted table of parameters
 
         '''
-        print('Type       Value      (Rxn #)   (Species) ')
+        message = '| ----- Type ----- | ----- Value ----- | -- (Rxn #) -- | ---- (Species) ---- |\n'
 
         for i, p in enumerate(self.param_types):
+            
             if p[0]=='preexp':
-                print('Pre-exp     '+str(np.around(self.params[i], decimals=2))+'       '+str(p[1]+1))
+                if self.log_params:
+                    print_tup = ('Pre-exp factor', str(np.around(np.exp(x[i]),decimals=2)), str(p[1]+1),'')
+                else:
+                    print_tup = ('Pre-exp factor', str(np.around(x[i],decimals=2)), str(p[1]+1),'')
             if p[0]=='acteng':
-                print('Act. eng.   '+str(np.around(self.params[i], decimals=2))+'       '+str(p[1]+1))
+                if self.log_params:
+                    print_tup = ('Activation energy', str(np.around(np.exp(x[i]),decimals=2)), str(p[1]+1),'')
+                else:
+                    print_tup = ('Activation energy', str(np.around(x[i],decimals=2)), str(p[1]+1),'')
             if p[0]=='stoic':
-                print('Coeff.      '+str(np.around(self.params[i], decimals=2))+'        '+str(p[1]+1)+'        '+p[2])
-            if p[0]=='order':
-                print('Rxn. order '+str(np.around(self.params[i], decimals=2))+'                '+str(p[1]+1))
-            if p[0]=='oilsat':
-                print('Oil sat.   '+str(np.around(self.params[i], decimals=2)))
-        
-    def print_reaction(self):
+                print_tup = ('Coefficient', str(np.around(x[i],decimals=2)), str(p[1]+1),str(p[2]))
+
+            message += '{:<20}{:<20}{:<16}{:25}\n'.format(*print_tup)
+
+        print(message, file=fileID)
+
+
+    def print_reaction(self, x, fileID=sys.stdout):
         '''
         Output formatted reaction with coefficients and species
 
         '''
 
+        reac_coeffs, prod_coeffs, _, _, act_energy, preexp_fac = self.map_parameters(x)
+
+        message = '| ---------------------------- Reaction ------------------------------------------- | ----- A ---- | ----- E ---- |\n'
+
         for i in range(self.num_rxns):
-            out_str = ''
+            reac_str = ''
             
             # Print reactants
             for j, c in enumerate(self.comp_names):
                 if c in self.reac_names[i]:
-                    out_str += str(np.around(self.reac_coeff[i,j], decimals=3)) + ' '
-                    out_str += c + ' + '
+                    reac_str += str(np.around(reac_coeffs[i,j], decimals=3)) + ' '
+                    reac_str += c + ' + '
             
-            out_str = out_str[:-3]
-            out_str += ' -> '
+            reac_str = reac_str[:-3] + ' -> '
+            
+            prod_str = ''
             
             # Print products
             for j, c in enumerate(self.comp_names):
                 if c in self.prod_names[i]:
-                    out_str += str(np.around(self.prod_coeff[i,j], decimals=3)) + ' '
-                    out_str += c + ' + '
-            out_str = out_str[:-3]
+                    prod_str += str(np.around(prod_coeffs[i,j], decimals=3)) + ' '
+                    prod_str += c + ' + '
+            prod_str = prod_str[:-3]
+
+            message += '{:>30}{:<50}{:>15}{:>15}\n'.format(reac_str, prod_str, str(np.around(preexp_fac[i],decimals=3)), str(np.around(act_energy[i],decimals=3)))
             
-            print(out_str)
+        print(message, file=fileID)

@@ -42,7 +42,7 @@ class KineticCellOptions():
         parser.add_argument('--IC_dict', type=str, default=None, help='dictionary of initial conditions')
 
         # Other arguments
-        parser.add_argument('--optimizer_type', type=str, default='quad_penalty', help='type of optimization to use [quad_penalty | aug_lagrangian]')
+        parser.add_argument('--optimizer_type', type=str, default='quad_penalty_de', help='type of optimization to use [quad_penalty | aug_lagrangian]')
         parser.add_argument('--log_params', type=eval, default=True, help='use log of some parameters during optimization')
         parser.add_argument('--experiment_type', type=str, default='rto', help='type ot data to load [rto | ignition]')
 

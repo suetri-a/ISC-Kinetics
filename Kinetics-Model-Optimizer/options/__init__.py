@@ -202,7 +202,7 @@ def get_predefined_rxn(opts):
         act_energies = [5e3, 7.75e4, 1e5, 5.4e4]
 
         rxn_constraints = []
-        init_coeff = [[1, 'Oil2', 2.0], [1, 'Coke1', 4.67], [1, 'Gas', 13.3], 
+        init_coeff = [[1, 'Oil2', 1.0], [1, 'Coke1', 1.0], [1, 'Gas', 3.3], 
             [2, 'O2', 5.0], [2, 'CO2', 3.0], [2, 'H2O', 4.0], 
             [3, 'O2', 18.0], [3, 'CO2', 12.0], [3, 'H2O', 12.0],
             [4, 'O2', 1.25], [4, 'CO2', 1.0], [4, 'H2O', 0.5]]

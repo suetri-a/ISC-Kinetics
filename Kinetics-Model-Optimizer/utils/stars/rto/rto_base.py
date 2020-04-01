@@ -25,7 +25,7 @@ class RtoBase(ABC):
     #
     ##############################################################################################
 
-    def write_dat_file(self, COMPS=None, REACTS=None, IC_dict=None, HR=None, 
+    def write_dat_file(self, COMPS=None, REACTS=None, IC_dict=None, HEATING_DATA=None, 
                         TFINAL=500, TEMP_MAX = 750, O2_con_in = 0.21):
         '''
         Inputs:
@@ -51,7 +51,7 @@ class RtoBase(ABC):
         self.print_numerical(fileID)
         self.print_recurrent(fileID, O2_con_in, COMPS)
         self.print_heater(fileID)
-        self.print_heating_ramp(fileID, HR, TFINAL, TEMP_MAX)
+        self.print_heating_ramp(fileID, HEATING_DATA, TFINAL, IC_dict['Temp'], TEMP_MAX)
         fileID.close()
 
 
@@ -135,7 +135,7 @@ class RtoBase(ABC):
         pass
 
     @abstractmethod
-    def print_heating_ramp(self, fileID, heating_rate, tfinal, tempmax):
+    def print_heating_ramp(self, fileID, heating_rate, tfinal, temp0, tempmax):
         pass
 
 

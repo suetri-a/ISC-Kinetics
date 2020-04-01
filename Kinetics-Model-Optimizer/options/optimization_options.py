@@ -12,14 +12,14 @@ class OptimizationOptions(KineticCellOptions):
         # Optimization options
         parser.add_argument('--phase', type=str, default='optimization', help='either simulation or optimization')
         parser.add_argument('--autodiff_enable', type=eval, default=False, help='use autodiff in optimizer')
-        parser.add_argument('--param_prior', type=str, default='uniform', help='prior for use in parameter inversion [uniform]')
-        parser.add_argument('--output_prior', type=str, default='gaussian', help='data prior for inversion [gaussian | exponential | ISO_peak | O2_peak]')
+        parser.add_argument('--param_loss', type=str, default='uniform', help='prior for use in parameter inversion [uniform]')
+        parser.add_argument('--output_loss', type=str, default='gaussian', help='data prior for inversion [gaussian | exponential | ISO_peak | O2_peak]')
         parser.add_argument('--balances', type=str, nargs='+', action='append', default=['M', 'O'], help='balances to constrain optimization [M | O | C]')
 
         # Reaction arguments
         parser.add_argument('--reaction_model', type=str, default='Cinar', 
             help='pre-programmed reaction model to use [Cinar | CinarMod1 | CinarMod2 | CinarMod3 | Chen1 | Chen 2 | Dechelette1 | Dechelette2 | Crookston]')
-        parser.add_argument('--kinetics_model', type=str, default='arrhenius', help='type of kinetics model to use [arrhenius | stars]')
+        parser.add_argument('--kinetics_model', type=str, default='stars', help='type of kinetics model to use [arrhenius | stars]')
         parser.add_argument('--load_rxn', type=eval, default=True, help='names of reactants')
         parser.add_argument('--reac_names', type=str, default=None, help='names of reactants')
         parser.add_argument('--prod_names', type=str, default=None, help='names of products')
@@ -35,7 +35,7 @@ class OptimizationOptions(KineticCellOptions):
         parser.add_argument('--rxn_order_lower', type=float, default=1e-2, help='lower bound of reaction orders')
         parser.add_argument('--rxn_order_upper', type=float, default=2.0, help='upper bound of reaction orders')
         parser.add_argument('--stoic_coeff_lower', type=float, default=1e-2, help='lower bound of stoichiometric coefficients')
-        parser.add_argument('--stoic_coeff_upper', type=float, default=30.0, help='upper bound of stoichiometric coefficients')
+        parser.add_argument('--stoic_coeff_upper', type=float, default=40.0, help='upper bound of stoichiometric coefficients')
 
         self.isOptimization = True
 

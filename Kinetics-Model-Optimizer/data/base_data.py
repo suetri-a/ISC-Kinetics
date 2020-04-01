@@ -1,5 +1,6 @@
 import autograd.numpy as np 
 import pandas as pd
+import os
 from abc import ABC, abstractmethod
 
 class BaseData(ABC):
@@ -12,29 +13,9 @@ class BaseData(ABC):
 
     def __init__(self, opts):
         # Load data
-        self.dataset_dir = opts.data_dir + opts.dataset + '/'
+        self.dataset_dir = os.path.join(opts.data_dir, opts.dataset)
         self.data_load(opts)
-
-
-    @abstractmethod
-    def get_O2_data(self):
-        '''
-        Return O2 consumption data retrieved from the data file
-
-        '''
-
-        pass
-
-
-    @abstractmethod
-    def get_T_data(self, heating_rate):
-        '''
-        Return temperature data from 
-
-        '''
-
-        pass
-
+        
 
     @abstractmethod
     def data_load(self, opts):

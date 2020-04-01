@@ -24,6 +24,7 @@ class SimulationOptions(KineticCellOptions):
         parser.add_argument('--prod_names', type=str, default=None, help='names of products')
         parser.add_argument('--rxn_constraints', type=str, default=None, help='constraints in the reaction')
         parser.add_argument('--init_coeff', type=str, default=None, help='initial coefficients in the reaction model')
+        parser.add_argument('--O2_con_in', type=float, default=0.25, help='concentration of flow of oxygen into kinetic cell')
         parser.add_argument('--Tspan', type=float, nargs='+', action='append', default=[0.0, 500.0], help='time span for running simulation')
         parser.add_argument('--balances', type=str, nargs='+', action='append', default=['M', 'O'], help='balances to constrain optimization [M | O | C]')
 

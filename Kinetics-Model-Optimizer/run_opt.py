@@ -1,9 +1,6 @@
 '''
 Run kinetic cell optimization. 
 
-Forms kinetic cell to hold data (either synthetic or experimental) and
-    fits parameters in a target kinetic cell to the data. 
-
 '''
 import time
 import os
@@ -17,10 +14,22 @@ from data import create_data_cell
 from optimization import create_optimizer
 
 if __name__ == '__main__':
+    
+    # Set random seed
+    np.random.seed(999)
+
+    # Load optimization options
     opts = OptimizationOptions().parse()
+
+    # Load data container
     data_cell = create_data_cell(opts)
+    
+    # Initialize kinetic cell to run simulations
     kinetic_cell = create_kinetic_cell(opts)
-    kinetic_cell.clone_from_data(data_cell)
+
+    # Create optimizer container
     optimizer = create_optimizer(kinetic_cell, data_cell, opts)
+
+    # Optimize reaction
     optimizer.optimize_cell()
 

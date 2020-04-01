@@ -35,8 +35,33 @@ class ArrheniusModel(KineticCellBase):
         self.pre_exp_factors = opts.pre_exp_fwd
         self.act_energies = opts.act_eng_fwd
         self.O2_ind = self.comp_names.index('O2')
+        self.comp_phase = [opts.comp_phase[comp] for comp in self.comp_names]
         
         self.init_params(opts)
+
+        self.V = opts.porosity * opts.kc_V
+        self.q = opts.flow_rate # [580 cm^3/min]
+        self.P = opts.O2_partial_pressure # O2 partial pressure 
+        self.R = opts.R 
+        self.T0 = opts.T0
+        self.O2_con_in = opts.O2_con_in
+        
+        self.max_temp = opts.max_temp
+        self.heating_rates = [h/60 for h in opts.heating_rates] # convert HR to /min
+        self.num_heats = len(self.heating_rates)
+        self.Tspan = opts.Tspan
+        
+        # Build initial condition vector
+        self.IC = [] 
+        for _ in range(self.num_heats):
+            IC_temp = []
+            for spec in self.comp_names:
+                if spec == 'O2' and opts.IC_dict[spec] == None:
+                    IC_temp.append(self.O2_con_in)
+                else:
+                    IC_temp.append(opts.IC_dict[spec])
+            IC_temp.append(opts.T0)
+            self.IC.append(np.array(IC_temp))
 
 
     def init_params(self, opts):
