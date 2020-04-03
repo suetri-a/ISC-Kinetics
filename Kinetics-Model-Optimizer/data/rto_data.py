@@ -289,7 +289,7 @@ class RtoData(BaseData):
         # Transform labels to be ascending order of conversion value
         mean_convs = [np.mean(np.array(conv_grid)[labels==i]) for i in range(num_rxns)]
         label_sort_inds = sorted(range(num_rxns),key=mean_convs.__getitem__)
-        labels = [label_sort_inds[l] for l in labels]
+        labels = [label_sort_inds.index(l) for l in labels]
         
         act_eng = [np.mean(np.array(O2_eact)[np.equal(labels,i)]) for i in range(num_rxns)]
         pre_exp = [np.exp(np.mean(np.array(O2_preexp)[np.equal(labels,i)])) for i in range(num_rxns)]
@@ -305,8 +305,8 @@ class RtoData(BaseData):
         if num_rxns is None:
             raise Exception('Must enter number of oxygenated reactions.')
             
-        conv_grid, O2_eact, _, O2_preexp = self.isoconversional_analysis(corrected=True)
-        pre_exp, e_acts, labels = self.compute_kinetics_params(num_rxns, return_labels=True)
+        conv_grid, O2_eact, _, _ = self.isoconversional_analysis(corrected=True)
+        _, e_acts, labels = self.compute_kinetics_params(num_rxns, return_labels=True)
         
         plt.figure()
         plt.plot(conv_grid, O2_eact)
@@ -327,12 +327,11 @@ class RtoData(BaseData):
         plt.show()
             
     
-    def compute_initial_guess(self, reac_names, prod_names, comp_names, res, param_types, log_params=True):
+    def compute_initial_guess(self, reac_names, prod_names, res, param_types, log_params=True):
         '''
         Inputs:
             reac_names - list of reactant names for every reaction
             prod_names - list of product names for every reaction
-            comp_names - list of component names in order used by the residual function
             res - function res(x) that computes the sum of squared residuals from an input parameter vector x
             param_types - list of parameter types 
             log_params - if log of pre-exponential factors and activation energy being used
@@ -355,6 +354,7 @@ class RtoData(BaseData):
         
         # Get distance scores for each reaction
         fuel_names = []
+        comp_names = list(set([comp for reac_prod in reac_names+prod_names for comp in reac_prod]))
         for c in comp_names:
             if len(c)>=3:
                 if c[:3]=='Oil':

@@ -41,6 +41,29 @@ class KineticCellOptions():
         parser.add_argument('--combustion_prods', type=str, default=None, help='components produced from combustion')
         parser.add_argument('--IC_dict', type=str, default=None, help='dictionary of initial conditions')
 
+        # Reaction arguments
+        parser.add_argument('--rxn1_reac', type=str, default=None, help='Reaction 1 reactant names')
+        parser.add_argument('--rxn2_reac', type=str, default=None, help='Reaction 2 reactant names')
+        parser.add_argument('--rxn3_reac', type=str, default=None, help='Reaction 3 reactant names')
+        parser.add_argument('--rxn4_reac', type=str, default=None, help='Reaction 4 reactant names')
+        parser.add_argument('--rxn5_reac', type=str, default=None, help='Reaction 5 reactant names')
+        parser.add_argument('--rxn6_reac', type=str, default=None, help='Reaction 6 reactant names')
+        parser.add_argument('--rxn7_reac', type=str, default=None, help='Reaction 7 reactant names')
+        parser.add_argument('--rxn8_reac', type=str, default=None, help='Reaction 8 reactant names')
+        parser.add_argument('--rxn9_reac', type=str, default=None, help='Reaction 9 reactant names')
+        parser.add_argument('--rxn10_reac', type=str, default=None, help='Reaction 10 reactant names')
+
+        parser.add_argument('--rxn1_prod', type=str, default=None, help='Reaction 1 product names')
+        parser.add_argument('--rxn2_prod', type=str, default=None, help='Reaction 2 product names')
+        parser.add_argument('--rxn3_prod', type=str, default=None, help='Reaction 3 product names')
+        parser.add_argument('--rxn4_prod', type=str, default=None, help='Reaction 4 product names')
+        parser.add_argument('--rxn5_prod', type=str, default=None, help='Reaction 5 product names')
+        parser.add_argument('--rxn6_prod', type=str, default=None, help='Reaction 6 product names')
+        parser.add_argument('--rxn7_prod', type=str, default=None, help='Reaction 7 product names')
+        parser.add_argument('--rxn8_prod', type=str, default=None, help='Reaction 8 product names')
+        parser.add_argument('--rxn9_prod', type=str, default=None, help='Reaction 9 product names')
+        parser.add_argument('--rxn10_prod', type=str, default=None, help='Reaction 10 product names')
+
         # Other arguments
         parser.add_argument('--optimizer_type', type=str, default='quad_penalty_de', help='type of optimization to use [quad_penalty | aug_lagrangian]')
         parser.add_argument('--log_params', type=eval, default=True, help='use log of some parameters during optimization')
