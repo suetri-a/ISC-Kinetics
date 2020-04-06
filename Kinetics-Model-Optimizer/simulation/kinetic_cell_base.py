@@ -146,7 +146,7 @@ class KineticCellBase(ABC):
     ###########################################################
 
 
-    def get_O2_consumption(self, x, heating_data, IC):
+    def get_rto_data(self, x, heating_data, IC):
         '''
         Method to return O2 consumption when handed parameters x
 
@@ -156,7 +156,7 @@ class KineticCellBase(ABC):
             IC - dictionary of initial conditions. Must contain at least 'Oil', 'O2', and 'Temp'. 
 
         Returns:
-            O2_consumption = [#Heating rates, #Time steps] array of O2 consumption curves
+            y_dict_out = dictionary containing time, O2 consumption, CO2 production, and temperature
 
         '''
         # Check if parameters are different from current parameters or O2 consumption is empty
@@ -166,8 +166,9 @@ class KineticCellBase(ABC):
                                             PROD_ORDERS=prod_order, ACT_ENERGY=e_act, PREEXP_FAC=pre_exp_fac,
                                             HEATING_DATA=heating_data, IC=IC)
         print('Finished RTO simulation!')
-        O2_consumption = np.maximum(IC['O2'] - y_dict['O2'], 0)
-        return t, O2_consumption
+
+        y_dict_out = {'Time': t, 'O2': np.maximum(IC['O2'] - y_dict['O2'], 0), 'CO2': y_dict['CO2'], 'Temp': y_dict['Temp']}
+        return y_dict_out
 
 
     def init_reaction_matrices(self):

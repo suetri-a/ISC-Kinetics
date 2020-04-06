@@ -32,8 +32,6 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
                 print('Loss value: {} ({} base cost, {} constraint cost)'.format(cost, base_cost, constraint_cost), file=fileID)
                 print('================================================== End Status at Iteration {} ==================================================\n\n'.format(str(self.function_evals)), file=fileID)
 
-            
-
             return cost
         
         return fun
@@ -44,9 +42,9 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
         bnds = self.kinetic_cell.get_bounds()
         def res_fun(x): return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
         x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
-                                                        self.kinetic_cell.comp_names, res_fun, self.kinetic_cell.param_types)
+                                                        res_fun, self.kinetic_cell.param_types)
         popsizes = [5, 2, 1, 1, 1]
-        init_pop = np.tile(x0,(1,10)) + 0.1*np.random.randn(popsizes[0]*x0.shape[0], x0.shape[0])
+        init_pop = np.tile(x0,(popsizes[0]*x0.shape[0],1)) + 0.05*np.random.randn(popsizes[0]*x0.shape[0], x0.shape[0])
 
         for i in range(5):
             
@@ -60,9 +58,10 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
             
             # Perform updates
             l*=10
-            init_pop = np.tile(x,(1,10)) + 0.1*np.random.randn(popsizes[i+1]*x.shape[0], x.shape[0])
+            init_pop = np.tile(x,(popsizes[i+1]*x0.shape[0],1)) + 0.05*np.random.randn(popsizes[i+1]*x.shape[0], x.shape[0])
 
         self.sol = x
+
 
         # Print convergence plot
         plt.figure()
@@ -87,3 +86,11 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
         plt.ylabel('Constraint loss value')
         plt.title('Optimization Convergence Plot - Constraint Loss')
         plt.savefig(os.path.join(self.kinetic_cell.results_dir, 'convergence_plot_constraint.png'))
+
+        # Save data
+        np.save(os.path.join(self.kinetic_cell.results_dir, 'total_loss.npy'), np.array(self.loss_values) + np.array(self.constraint_loss_values))
+        np.save(os.path.join(self.kinetic_cell.results_dir, 'constraint_loss.npy'), np.array(self.constraint_loss_values))
+        np.save(os.path.join(self.kinetic_cell.results_dir, 'data_loss.npy'), np.array(self.loss_values))
+        np.save(os.path.join(self.kinetic_cell.results_dir, 'optimal_params.npy'), self.sol)
+
+        self.compute_likelihood_intervals(self.sol)

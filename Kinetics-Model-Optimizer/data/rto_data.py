@@ -3,12 +3,15 @@ import pandas as pd
 import networkx as nx
 import glob, os, warnings
 import matplotlib.pyplot as plt
+
 from scipy.stats import linregress
 from scipy.integrate import trapz, cumtrapz
 from scipy.optimize import minimize
 from sklearn.cluster import KMeans, SpectralClustering
-from sklearn.linear_model import LinearRegression
+
+
 from .base_data import BaseData
+from utils.utils import isoconversional_analysis
 
 
 def load_rto_data(data_path, clean_data = True, return_O2_con_in = False):
@@ -133,23 +136,21 @@ class RtoData(BaseData):
             print('Loading heating rate {}...'.format(hr))
             # Read RTO data
             ydict = load_rto_data(os.path.join(self.dataset_dir, str(hr)+'C_min'))
-            Time, Temp, O2_consumption, O2_con_in = ydict['Time'], ydict['Temp'], ydict['O2_consumption'], ydict['O2_con_in']
             
             # Downsample and append
-            time_downsampled = np.linspace(Time.min(), Time.max(), num=INTERPNUM)
-            Temp_ds = np.interp(time_downsampled, Time, Temp)
-            O2_consumption_ds = np.interp(time_downsampled, Time, O2_consumption/100)
+            time_downsampled = np.linspace(ydict['Time'].min(), ydict['Time'].max(), num=INTERPNUM)
+            Temp_ds = np.interp(time_downsampled, ydict['Time'], ydict['Temp'])
+            O2_consumption_ds = np.interp(time_downsampled, ydict['Time'], ydict['O2_consumption']/100)
+            CO2_production_ds = np.interp(time_downsampled, ydict['Time'], ydict['CO2_production']/100)
 
-            self.heating_data[hr] = (time_downsampled, Temp_ds, O2_consumption_ds)
-            self.O2_con_in.append(O2_con_in/100)
-    
+            self.heating_data[hr] = {'Time': time_downsampled, 'Temp': Temp_ds, 'O2': O2_consumption_ds, 'CO2': CO2_production_ds, 'O2_con_in': ydict['O2_con_in']/100}
+
     
     def print_curves(self, save_path = None):
 
         plt.figure()
         for hr in sorted(self.heating_data.keys()):
-            Time, _, O2 = self.heating_data[hr]
-            plt.plot(Time, O2)
+            plt.plot(self.heating_data[hr]['Time'], self.heating_data[hr]['O2'])
         plt.xlabel('Time [min]')
         plt.ylabel('O2 consumption [% mol]')
         plt.title('O2 consumption for experiments')
@@ -162,8 +163,7 @@ class RtoData(BaseData):
 
         plt.figure()
         for hr in sorted(self.heating_data.keys()):
-            Time, Temp, _ = self.heating_data[hr]
-            plt.plot(Time, Temp)
+            plt.plot(self.heating_data[hr]['Time'], self.heating_data[hr]['Temp'])
         plt.xlabel('Time [min]')
         plt.ylabel('Temperature [C]')
         plt.title('Temperature profiles for experiments')
@@ -174,7 +174,9 @@ class RtoData(BaseData):
         else:
             plt.show()
 
+
     def get_heating_data(self):
+        
         '''
         Get dictionary of times and temperature data.
 
@@ -201,46 +203,10 @@ class RtoData(BaseData):
             return self.heating_data[hr]['Temp'][0]
         else:
             return 0.0
-
-
-    def isoconversional_analysis(self, corrected=False):
-        '''
-        Use Friedman method for now
-        
-        '''
-        R = 8.3145
-        if corrected:
-            maxes = []
-            for hr in sorted(self.heating_rates):
-                max_ind = np.argmax(self.heating_data[hr]['O2'])
-                maxes.append(self.heating_data[hr]['O2_conversion'][max_ind])
-            max_conv = np.mean(maxes)
-        else:
-            max_conv = 0.99
-            
-        conv_grid = np.linspace(0.01,max_conv,200)
-        
-        O2_eact, O2_rorder, O2_preexp = [], [], []
-
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            
-            for i in range(conv_grid.shape[0]):
-                model = LinearRegression()
-                conv = conv_grid[i]
-                O2_temps = [np.interp(conv, self.heating_data[hr]['O2_conversion'], -1/self.heating_data[hr]['Temp']/R) for hr in self.heating_rates]
-                dO2_convs = [np.interp(conv, self.heating_data[hr]['O2_conversion'],np.log(self.heating_data[hr]['O2'])) for hr in self.heating_rates]
-                model.fit(np.column_stack((O2_temps, np.log(conv)*np.ones_like(O2_temps))), dO2_convs)
-                O2_eact.append(model.coef_[0])
-                O2_rorder.append(model.coef_[1])
-                O2_preexp.append(model.intercept_)
-
-        
-        return conv_grid, O2_eact, O2_rorder, O2_preexp # CO2_eact
     
             
     def print_isoconversional_curves(self, save_path=None, corrected = False):
-        conv_grid, O2_eact, O2_rorder, O2_preexp = self.isoconversional_analysis(corrected=corrected)
+        conv_grid, O2_eact, O2_rorder, O2_preexp = isoconversional_analysis(self.heating_data, corrected=corrected)
     
         plt.figure()
         plt.plot(conv_grid, O2_eact)
@@ -278,7 +244,7 @@ class RtoData(BaseData):
 
     def compute_kinetics_params(self, num_rxns, return_labels=False):
         
-        conv_grid, O2_eact, _, O2_preexp = self.isoconversional_analysis(corrected=True)
+        conv_grid, O2_eact, _, O2_preexp = isoconversional_analysis(self.heating_data, corrected=True)
         
         conv_grid_fit = (conv_grid - np.mean(conv_grid)) / np.std(conv_grid)
         O2_eact_fit = (O2_eact - np.mean(O2_eact)) / np.std(O2_eact)
@@ -305,7 +271,7 @@ class RtoData(BaseData):
         if num_rxns is None:
             raise Exception('Must enter number of oxygenated reactions.')
             
-        conv_grid, O2_eact, _, _ = self.isoconversional_analysis(corrected=True)
+        conv_grid, O2_eact, _, _ = isoconversional_analysis(self.heating_data, corrected=True)
         _, e_acts, labels = self.compute_kinetics_params(num_rxns, return_labels=True)
         
         plt.figure()

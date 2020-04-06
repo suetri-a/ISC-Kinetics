@@ -5,7 +5,7 @@ import optimization
 import data
 
 from utils import utils
-from . import get_predefined_rxn, get_component_props
+from . import set_reaction_defaults, get_component_props, parse_rxn_info, parse_optimization_info
 
 class KineticCellOptions():
     '''
@@ -42,27 +42,13 @@ class KineticCellOptions():
         parser.add_argument('--IC_dict', type=str, default=None, help='dictionary of initial conditions')
 
         # Reaction arguments
-        parser.add_argument('--rxn1_reac', type=str, default=None, help='Reaction 1 reactant names')
-        parser.add_argument('--rxn2_reac', type=str, default=None, help='Reaction 2 reactant names')
-        parser.add_argument('--rxn3_reac', type=str, default=None, help='Reaction 3 reactant names')
-        parser.add_argument('--rxn4_reac', type=str, default=None, help='Reaction 4 reactant names')
-        parser.add_argument('--rxn5_reac', type=str, default=None, help='Reaction 5 reactant names')
-        parser.add_argument('--rxn6_reac', type=str, default=None, help='Reaction 6 reactant names')
-        parser.add_argument('--rxn7_reac', type=str, default=None, help='Reaction 7 reactant names')
-        parser.add_argument('--rxn8_reac', type=str, default=None, help='Reaction 8 reactant names')
-        parser.add_argument('--rxn9_reac', type=str, default=None, help='Reaction 9 reactant names')
-        parser.add_argument('--rxn10_reac', type=str, default=None, help='Reaction 10 reactant names')
-
-        parser.add_argument('--rxn1_prod', type=str, default=None, help='Reaction 1 product names')
-        parser.add_argument('--rxn2_prod', type=str, default=None, help='Reaction 2 product names')
-        parser.add_argument('--rxn3_prod', type=str, default=None, help='Reaction 3 product names')
-        parser.add_argument('--rxn4_prod', type=str, default=None, help='Reaction 4 product names')
-        parser.add_argument('--rxn5_prod', type=str, default=None, help='Reaction 5 product names')
-        parser.add_argument('--rxn6_prod', type=str, default=None, help='Reaction 6 product names')
-        parser.add_argument('--rxn7_prod', type=str, default=None, help='Reaction 7 product names')
-        parser.add_argument('--rxn8_prod', type=str, default=None, help='Reaction 8 product names')
-        parser.add_argument('--rxn9_prod', type=str, default=None, help='Reaction 9 product names')
-        parser.add_argument('--rxn10_prod', type=str, default=None, help='Reaction 10 product names')
+        parser.add_argument('--reac_names', type=str, default=None, help='names of reactants')
+        parser.add_argument('--prod_names', type=str, default=None, help='names of products')
+        parser.add_argument('--rxn_constraints', type=str, default=None, help='constraints in the reaction')
+        parser.add_argument('--init_coeff', type=str, default=None, help='initial coefficients in the reaction model')
+        parser.add_argument('--reaction_model', type=str, default=None, 
+            help='pre-programmed reaction model to use [Cinar | CinarMod1 | CinarMod2 | CinarMod3 | Chen1 | Chen 2 | Dechelette1 | Dechelette2 | Crookston]')
+        parser.add_argument('--kinetics_model', type=str, default='stars', help='type of kinetics model to use [arrhenius | stars]')
 
         # Other arguments
         parser.add_argument('--optimizer_type', type=str, default='quad_penalty_de', help='type of optimization to use [quad_penalty | aug_lagrangian]')
@@ -92,6 +78,9 @@ class KineticCellOptions():
         kinetic_cell_name = opt.kinetics_model
         kc_option_setter = simulation.get_option_setter(kinetic_cell_name)
         parser = kc_option_setter(parser)
+
+        reaction_model_name = opt.reaction_model
+        parser = set_reaction_defaults(parser, reaction_model_name)
         opt, _ = parser.parse_known_args()  # parse again with new defaults
 
 
@@ -109,8 +98,12 @@ class KineticCellOptions():
 
         # Load in reaction info if required
         opts = get_component_props(opts)
-        if opts.load_rxn:
-            opts = get_predefined_rxn(opts)
+
+        # Parse the reaction info into form usable by optimizer/simulator modules
+        opts = parse_rxn_info(opts)
+
+        if self.isOptimization:
+            opts = parse_optimization_info(opts)
 
         # Return final parser
         return opts
@@ -136,7 +129,8 @@ class KineticCellOptions():
         # save to the disk
         expr_dir = os.path.join(opt.results_dir, opt.name)
         utils.mkdirs(expr_dir)
-        file_name = os.path.join(expr_dir, '{}_opt.txt'.format(opt.phase))
+        type_of_exp = 'optimization' if self.isOptimization else 'simulation'
+        file_name = os.path.join(expr_dir, '{}_opt.txt'.format(type_of_exp))
         with open(file_name, 'wt') as opt_file:
             opt_file.write(message)
             opt_file.write('\n')

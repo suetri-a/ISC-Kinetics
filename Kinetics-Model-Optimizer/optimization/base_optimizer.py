@@ -13,8 +13,10 @@ import matplotlib.pyplot as plt
 import scipy as sp
 from scipy.optimize import minimize
 from scipy.signal import find_peaks_cwt
+from scipy.linalg import cholesky
+from scipy.stats import multivariate_normal
 
-from utils.utils import mkdirs
+from utils.utils import mkdirs, numerical_hessian
 
 
 class BaseOptimizer(ABC):
@@ -30,6 +32,12 @@ class BaseOptimizer(ABC):
         parser.add_argument('--peak_weight_vec', type=float, nargs='+', action='append', default=[75.0, 75.0, 250.0, 250.0], 
             help='weight for each part of O2 peaks cost funciton')
         parser.add_argument('--reac_tol', type=float, default=1e-4, help='tolerance for start and end of reaction')
+
+        # loss function options
+        parser.add_argument('--O2_sigma', type=float, default=1e-2, help='sigma for O2 covariance')
+        parser.add_argument('--CO2_sigma', type=float, default=1e-2, help='sigma for CO2 covariance')
+        parser.add_argument('--loss_sigma', type=float, default=1e-2, help='sigma for noise in signal')
+        parser.add_argument('--CO2_O2_sigma', type=float, default=1e-3, help='sigma for CO2/O2 covariance')
 
         parser.set_defaults(log_params=True)
 
@@ -54,6 +62,8 @@ class BaseOptimizer(ABC):
         if os.path.exists(self.figs_dir):
             shutil.rmtree(self.figs_dir)
         mkdirs([self.figs_dir])
+
+        self.data_container.print_curves(save_path=os.path.join(self.figs_dir, 'rto_curves.png'))
 
         self.output_loss = self.get_output_loss(opts)
 
@@ -80,9 +90,50 @@ class BaseOptimizer(ABC):
         # elif opts.output_loss == 'mean_abs_error':
         #     output_loss = self.sum_squared_error_loss
 
-        if opts.output_loss == 'gaussian':
-            output_loss = self.gaussian_likelihood
 
+        if opts.output_loss == 'gaussian':
+
+            def output_loss(data_dict, y_dict):
+                Time = data_dict['Time']
+                N = Time.shape[0]
+                time_diffs = np.expand_dims(Time, 0) - np.expand_dims(Time, 1)
+                
+                # O2 only case
+                if 'O2' in opts.output_loss_inputs and 'CO2' not in opts.output_loss_inputs:
+                    x_data = data_dict['O2']
+                    x_sim = y_dict['O2']
+                    M = opts.O2_sigma*np.exp(-np.power(time_diffs,2) / 2 / opts.O2_sigma**2) + opts.loss_sigma*np.eye(N)
+
+                # CO2 only case
+                elif 'O2' not in opts.output_loss_inputs and 'CO2' in opts.output_loss_inputs:
+                    x_data = data_dict['CO2']
+                    x_sim = y_dict['CO2']
+                    M = opts.O2_sigma*np.exp(-np.power(time_diffs,2) / 2 / opts.CO2_sigma**2) + opts.loss_sigma*np.eye(N)
+
+                elif 'O2' in opts.output_loss_inputs and 'CO2' in opts.output_loss_inputs:
+                    x_data = np.concatenate([data_dict['O2'], data_dict['CO2']])
+                    x_sim = np.concatenate([y_dict['O2'], y_dict['CO2']])
+
+                    A = opts.O2_sigma*np.exp(-np.power(time_diffs,2)/ 2 / opts.O2_sigma**2) + opts.loss_sigma*np.eye(N)
+                    B = 1e-1*np.exp(-np.power(time_diffs,2) / 2 / opts.CO2_O2_sigma**2)
+                    C = opts.O2_sigma*np.exp(-np.power(time_diffs,2)/ 2 / opts.CO2_sigma**2) + opts.loss_sigma*np.eye(N)
+                    M = np.block([[A, B], [B, C]])
+                
+                x = x_data - x_sim
+                L = cholesky(M, lower=True)
+
+                # Referenced https://stats.stackexchange.com/questions/186307/
+                #                  efficient-stable-inverse-of-a-patterned-covariance-matrix-for-gridded-data
+                alpha = np.solve(L.T, np.solve(L, x))
+                loss = 0.5*np.dot(alpha, x) + N*np.log(2*np.pi) + np.trace(np.log(L))
+
+                return loss
+
+        elif opts.output_loss == 'exponential':
+            raise Exception('exponential covariance loss function not implemented yet')
+            
+        else:
+            raise Exception('Invalid loss function {} entered.'.format(opts.output_loss))
 
         return output_loss
 
@@ -97,6 +148,7 @@ class BaseOptimizer(ABC):
             kinetic_cell - KineticCell() or child class object with a kinetic cell model
             data_cell - DataContainer() or child class object containing the data to optimize to
             opts - OptimizationOptions() class object containing the options for the optimizers
+        
         Returns: 
             base_fun(x) - base cost functions
 
@@ -126,18 +178,17 @@ class BaseOptimizer(ABC):
             plt.figure()
 
             for i, hr in enumerate(sorted(self.data_container.heating_rates)):
-                Time, Temp, O2 = self.data_container.heating_data[hr]
+                data_dict = self.data_container.heating_data[hr]
 
                 # Plot experimental data
-                plt.plot(Time, O2, colors[i]+'-', label=str(hr))
+                plt.plot(data_dict['Time'], data_dict['O2'], colors[i]+'-', label=str(hr))
                             
                 try:
-                    heating_data = {'Time': Time, 'Temp': Temp}
-                    IC = {'Temp': Temp[0], 'O2': self.data_container.O2_con_in[i], 'Oil': self.data_container.Oil_con_init}
-                    t, O2_sim = self.kinetic_cell.get_O2_consumption(x, heating_data, IC) 
+                    heating_data = {'Time': data_dict['Time'], 'Temp': data_dict['Temp']}
+                    IC = {'Temp': data_dict['Temp'][0], 'O2': data_dict['O2_con_in'], 'Oil': self.data_container.Oil_con_init}
+                    y_dict = self.kinetic_cell.get_rto_data(x, heating_data, IC) 
 
-                    O2_sim_out = np.interp(Time, t, O2_sim)
-                    loss += self.output_loss(O2, O2_sim_out)
+                    loss += self.output_loss(data_dict, y_dict)
                     plt.plot(Time, O2_sim_out, colors[i]+'--')
                 
                 except:
@@ -158,6 +209,22 @@ class BaseOptimizer(ABC):
             return loss
 
         return base_fun
+
+    
+    def compute_likelihood_intervals(self, x):
+        '''
+        Compute the likelihood interval at a given parameter value. 
+
+        Inputs:
+            x - parameters around which to compute the interval
+
+        Prints the likelihood interval to the log file.
+
+        '''
+
+        H = numerical_hessian(x, self.base_cost)
+        I = np.linalg.inv(H)
+        rv = multivariate_normal(mean=x, cov=I)
 
 
     @staticmethod
