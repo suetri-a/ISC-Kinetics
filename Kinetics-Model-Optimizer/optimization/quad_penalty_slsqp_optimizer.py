@@ -5,7 +5,7 @@ from scipy.optimize import minimize, differential_evolution
 from .base_optimizer import BaseOptimizer
 
 
-class QuadPenaltyDEOptimizer(BaseOptimizer):
+class QuadPenaltySLSQPOptimizer(BaseOptimizer):
 
     def __init__(self, kinetic_cell, kc_ground_truth, opts):
         super().__init__(kinetic_cell, kc_ground_truth, opts)
@@ -22,7 +22,7 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
             constraint_cost = penalty_fac*np.sum(np.power(res,2)) # cost from quadratic penalty methods
             self.constraint_loss_values.append(constraint_cost)
             
-            # Compute total cost
+            # Comput total cost
             cost = base_cost + constraint_cost
 
             # Log optimization status
@@ -40,17 +40,12 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
     def optimize_cell(self):
         l = 1.0
         bnds = self.kinetic_cell.get_bounds()
-
-        # Compute initial guesses
         def res_fun(x): return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
         x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
                                                         res_fun, self.kinetic_cell.param_types)
+        x0 = self.warm_start_act_engs(x0, self.kinetic_cell.param_types)
 
-        x0 = self.warm_start(x0, self.kinetic_cell.param_types)
-
-        # Begin main optimization stage
-        popsizes = [5, 2, 1, 1, 1]
-        init_pop = np.tile(x0,(popsizes[0]*x0.shape[0],1)) + 0.05*np.random.randn(popsizes[0]*x0.shape[0], x0.shape[0])
+        opt_start_ind = self.function_evals
 
         for i in range(5):
             
@@ -58,21 +53,19 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
             cost = self.get_objective_fun(l)
 
             # Run optimization
-            maxiter = int(500/len(bnds)/popsizes[i])
-            result = differential_evolution(cost, bnds, init=init_pop, popsize=popsizes[i], maxiter=maxiter, polish=False)
-            x = result.x
+            result = minimize(cost, x0, bounds=bnds, method='SLSQP')
             
             if i < 4:
                 # Perform updates
+                x0 = result.x
                 l*=10
-                init_pop = np.tile(x,(popsizes[i+1]*x0.shape[0],1)) + 0.05*np.random.randn(popsizes[i+1]*x.shape[0], x.shape[0])
 
-        self.sol = x
+        self.sol = result.x
 
 
         # Print convergence plot
         plt.figure()
-        plt.semilogy(np.array(self.loss_values) + np.array(self.constraint_loss_values))
+        plt.semilogy(np.array(self.loss_values[opt_start_ind:]) + np.array(self.constraint_loss_values))
         plt.xlabel('Number of function evaluations')
         plt.ylabel('Total loss value')
         plt.title('Optimization Convergence Plot - Total Loss')
@@ -80,7 +73,9 @@ class QuadPenaltyDEOptimizer(BaseOptimizer):
 
         # Print convergence plot
         plt.figure()
-        plt.semilogy(self.loss_values)
+        plt.semilogy(self.loss_values[:opt_start_ind])
+        plt.semilogy(self.loss_values[opt_start_ind:])
+        plt.legend(['Warm Start', 'Optimization'])
         plt.xlabel('Number of function evaluations')
         plt.ylabel('Data loss value')
         plt.title('Optimization Convergence Plot - Data')

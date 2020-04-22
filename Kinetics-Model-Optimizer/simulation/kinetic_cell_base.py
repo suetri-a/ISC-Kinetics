@@ -1,8 +1,7 @@
 import autograd.numpy as np
 from abc import ABC, abstractmethod
 import argparse
-import os
-import sys
+import os, sys, pickle
 
 import matplotlib.pyplot as plt
 from scipy.optimize import fminbound
@@ -29,7 +28,8 @@ class KineticCellBase(ABC):
 
         #### Initialize save folders
         self.results_dir = os.path.join(opts.results_dir, opts.name,'')
-        mkdirs([self.results_dir])
+        load_dir = os.path.join(self.results_dir,'load_dir','')
+        mkdirs([self.results_dir, load_dir])
 
         #### Initialize reaction information
         self.reaction_model = opts.reaction_model
@@ -61,7 +61,14 @@ class KineticCellBase(ABC):
                     'actengfwd': opts.act_eng_upper, 'actengrev': opts.act_eng_upper, 
                     'balance-M': np.inf, 'balance-O': np.inf, 'balance-C': np.inf}
 
-        self.initialize_parameters(opts)
+        if opts.load_from_saved:
+            with open(os.path.join(self.results_dir,'load_dir','param_types.pkl'), 'rb') as fp:
+                self.param_types = pickle.load(fp)
+        
+        else:
+            self.initialize_parameters(opts)
+            with open(os.path.join(self.results_dir,'load_dir','param_types.pkl'), 'wb') as fp:
+                pickle.dump(self.param_types, fp)
 
     
     ###########################################################

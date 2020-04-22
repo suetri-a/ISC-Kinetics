@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 import pandas as pd
 import networkx as nx
-import os
+import os, pickle
 
 from scipy.optimize import nnls
 
@@ -44,6 +44,10 @@ class STARSModel(KineticCellBase):
         self.vkc_model = vkc_class(folder_name=self.cd_path, input_file_name=self.base_filename)
         self.num_stars_calls = 0
 
+        if opts.load_from_saved:
+            with open(os.path.join(self.results_dir,'load_dir', 'mappings.pkl'),'rb') as fp:
+                self.map_rxns_material, self.map_rxns_coeff, self.map_rxns_oxy = pickle.load(fp)
+
 
     def initialize_parameters(self, opts):
         '''
@@ -57,7 +61,9 @@ class STARSModel(KineticCellBase):
         self.param_types = []
         
         # Determine reactions for mappings
-        self.get_mappings() 
+        self.get_mappings()
+        with open(os.path.join(self.results_dir,'load_dir','mappings.pkl'),'wb') as fp:
+            pickle.dump((self.map_rxns_material, self.map_rxns_coeff, self.map_rxns_oxy), fp)
 
         # Iterate over reactions and add parameters
         for i in range(self.num_rxns):

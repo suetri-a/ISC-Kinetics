@@ -33,3 +33,6 @@ if __name__ == '__main__':
     # Optimize reaction
     optimizer.optimize_cell()
 
+    # Run uncertainty analysis
+    optimizer.analyze_uncertainty()
+

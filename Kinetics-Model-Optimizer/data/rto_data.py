@@ -231,7 +231,7 @@ class RtoData(BaseData):
             plt.show()
             
         plt.figure()
-        plt.plot(conv_grid, O2_preexp)
+        plt.plot(conv_grid, np.exp(O2_preexp))
         plt.xlabel('O2 conversion [% mol]')
         plt.ylabel('Pre-exponential factor')
         plt.title('O2 conversion pre-exponential factor')
@@ -291,6 +291,37 @@ class RtoData(BaseData):
             plt.savefig(save_path[:-4] + '_isconversional_overlay' + save_path[-4:])
         
         plt.show()
+
+
+    def compute_bounds(self, param_types, log_params=True):
+        '''
+        Compute bounds for each parameter based on the data
+
+        '''
+        _, O2_eact, _, O2_preexp = isoconversional_analysis(self.heating_data, corrected=True)
+
+        eact_min = np.maximum(np.amin(O2_eact), 1e3)
+        eact_max = np.minimum(np.amax(O2_eact), 1e6)
+
+        preexp_min = np.maximum(np.amin(np.exp(O2_preexp)), 1e-2)
+        preexp_max = np.minimum(np.amax(np.exp(O2_preexp)), 1e3)
+
+        if log_params:
+            eact_min, eact_max = np.log(eact_min), np.log(eact_max)
+            preexp_min, preexp_max = np.log(preexp_min), np.log(preexp_max)
+
+        bnds = []
+
+        for p in param_types:
+            if p[0] == 'acteng':
+                bnds.append((eact_min, eact_max))
+            elif p[0] == 'preexp':
+                bnds.append((preexp_min, preexp_max))
+            elif p[0] == 'stoic':
+                bnds.append((1e-2, 20))
+
+
+        return bnds
             
     
     def compute_initial_guess(self, reac_names, prod_names, res, param_types, log_params=True):
@@ -367,15 +398,19 @@ class RtoData(BaseData):
             pre_exps_all = [np.log(A) for A in pre_exps_all]
             act_engs_all = [np.log(E) for E in act_engs_all]
 
-        
+        bnds=[]
         for i, p in enumerate(param_types):
             if p[0] =='preexp':
                 x0[i] = pre_exps_all[p[1]]
+                bnds.append((-np.inf, np.inf))
             elif p[0] == 'acteng':
                 x0[i] = act_engs_all[p[1]]
+                bnds.append((-np.inf, np.inf))
+            else:
+                bnds.append((0, np.inf))
                 
         # Find coefficients that minimize the residual (i.e. physical reaction)
-        sol = minimize(res, x0)
+        sol = minimize(res, x0, bounds=bnds)
         x0 = sol.x # assign initial guess as vector that creates physical reaction
         
         return x0
