@@ -244,118 +244,115 @@ class BaseOptimizer(ABC):
 
         return base_fun
 
-
-    # def warm_start2(self, x0, param_types):
-    #     '''
-    #     Get objective function used to warm start optimization by optimizing activation energies
-
-    #     '''
-
-    #     x0_out = np.copy(x0)
-    #     warm_start_cost = self.get_warm_start_cost()
-
-    #     for r in range(self.kinetic_cell.num_rxns):
-
-    #         kinetics_inds = []
-    #         out_inds = []
-    #         opt_inds = []
-    #         bnds = []
-
-    #         for i, p in enumerate(param_types):                    
-
-    #             if p[0] =='acteng':
-    #                 kinetics_inds.append(i)
-    #                 if p[1] == r:
-    #                     bnds.append((x0[i]-2.0, x0[i]+2.0))
-    #                     out_inds.append(i)
-    #                     opt_inds.append(len(bnds)-1)
-    #                 else:
-    #                     bnds.append((np.log(1e3)-1e-2, np.log(1e3)+1e-2))
-                    
-
-    #             if p[0] == 'preexp':
-    #                 kinetics_inds.append(i)                    
-    #                 if p[1] == r:
-    #                     bnds.append((x0[i]-4.0, x0[i]+1.0))
-    #                     out_inds.append(i)
-    #                     opt_inds.append(len(bnds)-1)
-    #                 else:
-    #                     bnds.append((-1e-2, 1e-2))
-
-        
-    #         def fun(x_in):
-
-    #             x = np.copy(x0)
-    #             x[kinetics_inds] = x_in
-
-    #             # Compute cost
-    #             cost = warm_start_cost(x)
-
-    #             # Log optimization status
-    #             with open(self.log_file, 'a+') as fileID:
-    #                 print('=============================================== Status at Warm Start Iteration {} =============================================='.format(str(self.function_evals)), file=fileID)
-    #                 self.kinetic_cell.log_status(x, fileID)
-    #                 print('Base cost: {}'.format(cost), file=fileID)
-    #                 print('============================================= End Status at Warm Start Iteration {} ============================================\n\n'.format(str(self.function_evals)), file=fileID)
-
-    #             return cost
-
-    #         lb, ub = [l for l,u in bnds], [ u for l,u in bnds ]
-    #         x_opt, _ = pso(fun, lb, ub, swarmsize=15, maxiter=20, phip=0.5, phig=0.75)
-
-    #         x0_out[out_inds] = np.copy(x_opt[opt_inds])
-        
-    #     return x0_out
-
     
-    def warm_start(self, x0, param_types):
+    def warm_start(self, x0, param_types, return_bounds = False):
         '''
         Get objective function used to warm start optimization by optimizing activation energies
 
         '''
 
-        kinetics_inds = []
+        if return_bounds:
+            lb_out = np.zeros((len(param_types)))
+            ub_out = np.zeros((len(param_types)))
+
+        ##### Begin stage 1 of warm start
         bnds_all = self.data_container.compute_bounds(self.kinetic_cell.param_types)
-        bnds = []
-
-        for i, p in enumerate(param_types):
-            if p[0] =='acteng':
-                kinetics_inds.append(i)
-                bnds.append(bnds_all[i])
-            if p[0] == 'preexp':
-                kinetics_inds.append(i)
-                bnds.append(bnds_all[i])
-
-        warm_start_cost = self.get_warm_start_cost()
         
-        def fun(x_in):
+        preexp_inds = [i for i,p in enumerate(param_types) if p[0]=='preexp']
+        acteng_inds = [i for i,p in enumerate(param_types) if p[0]=='acteng']
+        
+        bnd_preexp = (np.amin([bnds_all[i][0] for i in preexp_inds]), np.amax([bnds_all[i][1] for i in preexp_inds]))
+        bnd_acteng = (np.amin([bnds_all[i][0] for i in acteng_inds]), np.amax([bnds_all[i][1] for i in acteng_inds]))
+
+        if return_bounds:
+            cost_types = [['peak', 'peak'], ['start', 'end'], ['end', 'start']]
+        else:
+            cost_types = [['peak', 'peak']]
+
+        
+        for ct in cost_types:
+            warm_start_cost = self.get_warm_start_points_cost(points=ct)
+            
+            def fun1(x_in):
+                # Setup parameter vector
+                x = np.copy(x0)
+                x[preexp_inds] = x_in[0]
+                x[acteng_inds] = x_in[1]
+
+                # Compute cost
+                cost = warm_start_cost(x)
+
+                # Log optimization status
+                with open(self.log_file, 'a+') as fileID:
+                    print('========================================== Status at Warm Start (Stage 1) - Iteration {} ========================================='.format(str(self.function_evals)), file=fileID)
+                    self.kinetic_cell.log_status(x, fileID)
+                    print('Base cost: {}'.format(cost), file=fileID)
+                    print('======================================== End Status at Warm Start (Stage 1) - Iteration {} =======================================\n\n'.format(str(self.function_evals)), file=fileID)
+
+                return cost
+
+            x_opt = brute(fun1, (bnd_preexp, bnd_acteng), Ns=25, finish=None)
+            
+            # Parse output 
+            if ct ==['peak','peak']:
+                x_out = np.copy(x0)
+                x_out[preexp_inds] = np.copy(x_opt[0])*np.ones_like(preexp_inds)
+                x_out[acteng_inds] = np.copy(x_opt[1])*np.ones_like(acteng_inds)
+            elif ct ==['end','start']:
+                ub_out[preexp_inds] = np.copy(x_opt[0])*np.ones_like(preexp_inds)
+                ub_out[acteng_inds] = np.copy(x_opt[1])*np.ones_like(acteng_inds)
+            elif ct == ['start', 'end']:
+                lb_out[preexp_inds] = np.copy(x_opt[0])*np.ones_like(preexp_inds)
+                lb_out[acteng_inds] = np.copy(x_opt[1])*np.ones_like(acteng_inds)
+
+        # Post process first stage results
+        if return_bounds:
+            lb_out = np.minimum(lb_out, ub_out)
+            ub_out = np.maximum(lb_out, ub_out)
+
+        x0 = np.copy(x_out) # Reassign with updated frequency factors and activation energies
+
+
+        ##### Begin stage 2 of warm starting
+        stoic_inds = [i for i, p in enumerate(param_types) if p[0]=='stoic']
+        bnds = [bnds_all[i] for i in stoic_inds]
+        warm_start_cost = self.get_warm_start_effluence_cost()
+
+        def fun2(x_in):
             # Setup parameter vector
             x = np.copy(x0)
-            x[kinetics_inds] = x_in
+            x[stoic_inds] = x_in
 
             # Compute cost
             cost = warm_start_cost(x)
 
             # Log optimization status
             with open(self.log_file, 'a+') as fileID:
-                print('=============================================== Status at Warm Start Iteration {} =============================================='.format(str(self.function_evals)), file=fileID)
+                print('========================================== Status at Warm Start (Stage 2) - Iteration {} ========================================='.format(str(self.function_evals)), file=fileID)
                 self.kinetic_cell.log_status(x, fileID)
                 print('Base cost: {}'.format(cost), file=fileID)
-                print('============================================= End Status at Warm Start Iteration {} ============================================\n\n'.format(str(self.function_evals)), file=fileID)
+                print('======================================== End Status at Warm Start (Stage 2) - Iteration {} =======================================\n\n'.format(str(self.function_evals)), file=fileID)
 
             return cost
 
-
         lb, ub = [l for l,u in bnds], [ u for l,u in bnds ]
-        x_opt, _ = pso(fun, lb, ub, swarmsize=50, maxiter=50, phip=0.5, phig=0.75)
+        x_opt, _ = pso(fun2, lb, ub, swarmsize=40, maxiter=50, phip=0.5, phig=0.75)
 
-        x_out = np.copy(x0)
-        x_out[kinetics_inds] = x_opt
-        
-        return x_out
+        x_out[stoic_inds] = np.copy(x_opt)
+        if return_bounds:
+            lb_out[stoic_inds] = np.maximum(x_out[stoic_inds] - 2.0, 1e-2)
+            ub_out[stoic_inds] = x_out[stoic_inds] + 2.0
+
+
+        # Return warm started parameters
+        if return_bounds:
+            bnds_out = [(l, u) for l, u in zip(lb_out.tolist(), ub_out.tolist())]
+            return x_out, bnds_out
+        else:
+            return x_out
 
     
-    def get_warm_start_cost(self):
+    def get_warm_start_points_cost(self, points=['peak','peak']):
 
         def cost_fun(x):
             '''
@@ -374,48 +371,110 @@ class BaseOptimizer(ABC):
             data_dict = self.data_container.heating_data[hr]
 
             # Plot experimental data
-            plt.plot(data_dict['Time'], data_dict['O2'], 'b-', label=str(hr))
+            plt.plot(data_dict['Time'], 100*data_dict['O2'], 'b-', label=str(hr))
 
 
             try:   
                 heating_data = {'Time': data_dict['Time'], 'Temp': data_dict['Temp']}
                 IC = {'Temp': data_dict['Temp'][0], 'O2': data_dict['O2_con_in'], 'Oil': self.data_container.Oil_con_init}
                 y_dict = self.kinetic_cell.get_rto_data(x, heating_data, IC) 
-                plt.plot(y_dict['Time'], y_dict['O2'], 'b--')
-                output_loss = 0 # self.output_loss(data_dict, y_dict)
-            #     O2_consump_sim = np.trapz(y_dict['O2'],x=y_dict['Time'])
-            #     O2_consump_data = np.trapz(data_dict['O2'],x=data_dict['Time'])
-            #     CO2_consump_sim = np.trapz(y_dict['CO2'],x=y_dict['Time'])
-            #     CO2_consump_data = np.trapz(data_dict['CO2'],x=data_dict['Time'])
+                plt.plot(y_dict['Time'], 100*y_dict['O2'], 'b--')
 
-            #     effluence_loss = (O2_consump_sim - O2_consump_data)**2 + (CO2_consump_sim - CO2_consump_data)**2
-                effluence_loss = 0
+                if points[0] == 'peak':
+                    O2_data_point = data_dict['Time'][np.argmax(data_dict['O2'])]
+                    CO2_data_point = data_dict['Time'][np.argmax(data_dict['CO2'])]
+                elif points[0] == 'start':
+                    O2_data_point = np.amin(data_dict['Time'][data_dict['O2']>0.05*np.amax(data_dict['O2'])])
+                    CO2_data_point = np.amin(data_dict['Time'][data_dict['CO2']>0.05*np.amax(data_dict['CO2'])])
+                elif points[0] == 'end':
+                    O2_data_point = np.amax(data_dict['Time'][data_dict['O2']>0.05*np.amax(data_dict['O2'])])
+                    CO2_data_point = np.amax(data_dict['Time'][data_dict['CO2']>0.05*np.amax(data_dict['CO2'])])
 
-                O2_data_peak = data_dict['Time'][np.argmax(data_dict['O2'])]
-                O2_sim_peak = y_dict['Time'][np.argmax(y_dict['O2'])]
-                CO2_data_peak = data_dict['Time'][np.argmax(data_dict['CO2'])]
-                CO2_sim_peak = y_dict['Time'][np.argmax(y_dict['CO2'])]
-                peak_pos_loss = (O2_data_peak - O2_sim_peak)**2 + (CO2_data_peak - CO2_sim_peak)**2
+                if points[1] == 'peak':
+                    O2_sim_point = y_dict['Time'][np.argmax(y_dict['O2'])]
+                    CO2_sim_point = y_dict['Time'][np.argmax(y_dict['CO2'])]
+                elif points[1] == 'start':
+                    O2_sim_point = np.amin(y_dict['Time'][y_dict['O2']>0.05*np.amax(y_dict['O2'])])
+                    CO2_sim_point = np.amin(y_dict['Time'][y_dict['CO2']>0.05*np.amax(y_dict['CO2'])])
+                elif points[1] == 'end':
+                    O2_sim_point = np.amax(y_dict['Time'][y_dict['O2']>0.05*np.amax(y_dict['O2'])])
+                    CO2_sim_point = np.amax(y_dict['Time'][y_dict['CO2']>0.05*np.amax(y_dict['CO2'])])
+
+                peak_pos_loss = (O2_data_point - O2_sim_point)**2 + (CO2_data_point - CO2_sim_point)**2
 
             except:
-                output_loss = 0# 1e4
-                effluence_loss = 0#1e4
                 peak_pos_loss = 1e4
 
             plt.xlabel('Time')
-            plt.ylabel(r'$O_2$ consumption')
-            plt.title(r'Warm Start $O_2$ consumption')
-            # plt.legend()
+            plt.ylabel(r'$O_2$ consumption [% mol]')
+            plt.title(r'Warm Start $O_2$ consumption (Stage 1 - {}, {})'.format(points[0], points[1]))
             
             # Print figure with O2 consumption data
             plt.savefig(os.path.join(self.kinetic_cell.results_dir, 'figures', 'O2_overlay_{}.png'.format(self.function_evals)))
             plt.close()
 
+            # Final loss value
+            loss = peak_pos_loss
+
             # Save loss value
-            self.loss_values.append(output_loss)
+            self.loss_values.append(loss)
+
+            return loss
+
+        return cost_fun
+
+    
+    def get_warm_start_effluence_cost(self):
+
+        def cost_fun(x):
+            '''
+
+            Note: when this function is called, the number of function evaluations is incremented, 
+                the data loss value is recorded, and create the overlay plot. The status of the 
+                parameters is not recorded.
+
+            '''
+            self.function_evals += 1
+
+            # Plot experimet
+            plt.figure()
+
+            hr = min(self.data_container.heating_rates)
+            data_dict = self.data_container.heating_data[hr]
+
+            # Plot experimental data
+            plt.plot(data_dict['Time'], 100*data_dict['O2'], 'b-', label=str(hr))
+
+
+            try:   
+                heating_data = {'Time': data_dict['Time'], 'Temp': data_dict['Temp']}
+                IC = {'Temp': data_dict['Temp'][0], 'O2': data_dict['O2_con_in'], 'Oil': self.data_container.Oil_con_init}
+                y_dict = self.kinetic_cell.get_rto_data(x, heating_data, IC) 
+                plt.plot(y_dict['Time'], 100*y_dict['O2'], 'b--')
+
+                O2_consump_sim = np.trapz(y_dict['O2'],x=y_dict['Time'])
+                O2_consump_data = np.trapz(data_dict['O2'],x=data_dict['Time'])
+                CO2_consump_sim = np.trapz(y_dict['CO2'],x=y_dict['Time'])
+                CO2_consump_data = np.trapz(data_dict['CO2'],x=data_dict['Time'])
+
+                effluence_loss = (O2_consump_sim - O2_consump_data)**2 + (CO2_consump_sim - CO2_consump_data)**2
+
+            except:
+                effluence_loss = 1e4
+
+            plt.xlabel('Time')
+            plt.ylabel(r'$O_2$ consumption [% mol]')
+            plt.title(r'Warm Start $O_2$ consumption (Stage 2)')
+            
+            # Print figure with O2 consumption data
+            plt.savefig(os.path.join(self.kinetic_cell.results_dir, 'figures', 'O2_overlay_{}.png'.format(self.function_evals)))
+            plt.close()
 
             # Final loss value
-            loss = output_loss + effluence_loss + peak_pos_loss
+            loss = effluence_loss
+
+            # Save loss value
+            self.loss_values.append(loss)
 
             return loss
 

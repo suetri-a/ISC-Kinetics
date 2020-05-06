@@ -307,7 +307,7 @@ class RtoData(BaseData):
         preexp_max = np.minimum(np.amax(np.exp(O2_preexp)), 1e3)
 
         if log_params:
-            eact_min, eact_max = np.log(eact_min), np.log(eact_max)
+            eact_min, eact_max = np.log(eact_min)-1, np.log(eact_max)+1
             preexp_min, preexp_max = np.log(preexp_min), np.log(preexp_max)
 
         bnds = []

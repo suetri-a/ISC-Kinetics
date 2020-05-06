@@ -227,10 +227,10 @@ class KineticCellBase(ABC):
         
         O2_fig, O2_plot = plt.subplots()
         for hr in Time.keys():
-            O2_plot.plot(Time[hr], O2[hr])
+            O2_plot.plot(Time[hr], 100*O2[hr])
 
         O2_plot.set_xlabel('Time, min')
-        O2_plot.set_ylabel(r'$O_2$ Consumption [mol]')
+        O2_plot.set_ylabel(r'$O_2$ Consumption [% mol]')
         
 
         temp_fig, temp_plot = plt.subplots()
