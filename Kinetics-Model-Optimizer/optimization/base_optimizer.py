@@ -97,7 +97,7 @@ class BaseOptimizer(ABC):
                             os.path.join(self.figs_dir, 'warm_start_3c'), os.path.join(self.figs_dir, 'warm_start_3d'),
                             os.path.join(self.figs_dir, 'warm_start_4'), os.path.join(self.figs_dir, 'warm_start_5'), 
                             os.path.join(self.figs_dir, 'optimization'), os.path.join(self.figs_dir, 'final_results')]
-            mkdirs([fig_dirs_list])
+            mkdirs(fig_dirs_list)
 
             self.warm_start_complete = False
             self.optim_complete = False

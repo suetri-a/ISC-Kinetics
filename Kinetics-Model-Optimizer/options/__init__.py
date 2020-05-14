@@ -344,7 +344,7 @@ def get_component_props(opts):
 
         # Molecular weights
         opts.material_dict['M'] = {'H2O': 1.8e-2, 'N2': 2.8e-2, 'O2': 3.2e-2, 'CO2': 4.4e-2, 'CO': 2.8e-2, 'Gas': 2.8e-2, # Product species
-                'Oil': 8.00e-1, 'Oil2': np.nan, 'Oil3': np.nan, 'Oil4': np.nan, 
+                'Oil': 5.00e-1, 'Oil2': np.nan, 'Oil3': np.nan, 'Oil4': np.nan, 
                 'Coke1': np.nan, 'Coke2': np.nan, 'Coke3': np.nan, 'Coke4': np.nan # Pseudocomponents
                 }
 

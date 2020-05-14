@@ -478,9 +478,10 @@ class KineticCellBase(ABC):
 
         message = '| ----- Fuel ----- | -- Molecular Weight -- | --- Oxygen Content --- |\n'
 
-        for f in self.fuel_names:
-            print_tup = (f, self.material_dict['M'][f], self.material_dict['O'][f])
-            message += '     {:<15}{:<25}{:25}\n'.format(*print_tup)
+        fuel_names = [s for reac in self.reac_names for s in reac if s in self.fuel_names+self.pseudo_fuel_comps]
+        for f in fuel_names:
+            print_tup = (f, self.balance_dict['M'][self.comp_names.index(f)], self.balance_dict['O'][self.comp_names.index(f)])
+            message += '     {:<20}{:<25}{:<25}\n'.format(*print_tup)
         
         print(message, file=fileID)
 
