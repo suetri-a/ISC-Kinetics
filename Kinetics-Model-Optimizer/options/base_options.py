@@ -25,7 +25,7 @@ class KineticCellOptions():
         parser.add_argument('--name', type=str, default='vkc_example', help='name of the numerical experiment')
         parser.add_argument('--results_dir', type=str, default='results', help='folder to contain results from the optimization')
         parser.add_argument('--isOptimization', type=eval, default=False, help='set if optimizing or simulating')
-        parser.add_argument('--load_from_saved', type=eval, default=False, help='experiment name to load from')
+        parser.add_argument('--load_from_saved', action='store_true', help='load experiment with same name')
 
         # Kinetic cell parameters
         parser.add_argument('--R', type=float, default=8.314, help='universal gas constant')

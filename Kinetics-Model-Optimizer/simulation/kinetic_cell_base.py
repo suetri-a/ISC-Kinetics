@@ -430,10 +430,12 @@ class KineticCellBase(ABC):
         Callback function to log information specific to the kinetic cell model.
         '''
 
-        print('Current parameter values:', file=log_file)
+        # print('Current parameter values:', file=log_file)
         self.print_params(x, fileID=log_file)
 
-        print('Current reaction:', file=log_file)
+        self.print_fuels(x, fileID=log_file)
+
+        # print('Current reaction:', file=log_file)
         self.print_reaction(x, fileID=log_file)
 
         self.logging_model(x, log_file)
@@ -464,6 +466,22 @@ class KineticCellBase(ABC):
 
             message += '{:<20}{:<20}{:<16}{:25}\n'.format(*print_tup)
 
+        print(message, file=fileID)
+
+    
+    def print_fuels(self, x, fileID=sys.stdout):
+        '''
+        Print information for parent fuel and pseudocomponents
+
+        '''
+        _ = self.map_parameters(x)
+
+        message = '| ----- Fuel ----- | -- Molecular Weight -- | --- Oxygen Content --- |\n'
+
+        for f in self.fuel_names:
+            print_tup = (f, self.material_dict['M'][f], self.material_dict['O'][f])
+            message += '     {:<15}{:<25}{:25}\n'.format(*print_tup)
+        
         print(message, file=fileID)
 
 

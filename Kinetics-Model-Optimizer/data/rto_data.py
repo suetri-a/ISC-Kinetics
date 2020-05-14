@@ -318,7 +318,7 @@ class RtoData(BaseData):
             elif p[0] == 'preexp':
                 bnds.append((preexp_min, preexp_max))
             elif p[0] == 'stoic':
-                bnds.append((1e-2, 20))
+                bnds.append((1e-2, 50))
 
 
         return bnds
