@@ -418,10 +418,11 @@ class KineticCellBase(ABC):
 
         # Balances matrix
         A = np.stack([self.balance_dict[B] for B in self.opts.balances])
-
+        
         for i in range(self.num_rxns):
-            res.append(np.sum((A.dot(reac_coeffs[i,:].T - prod_coeffs[i,:].T))**2))
-
+            res.append((A.dot(reac_coeffs[i,:].T - prod_coeffs[i,:].T)))
+        res = np.array(res)
+        
         return res
 
 
@@ -478,7 +479,7 @@ class KineticCellBase(ABC):
 
         message = '| ----- Fuel ----- | -- Molecular Weight -- | --- Oxygen Content --- |\n'
 
-        fuel_names = [s for reac in self.reac_names for s in reac if s in self.fuel_names+self.pseudo_fuel_comps]
+        fuel_names = sorted(list(set([s for reac in self.reac_names for s in reac if s in self.fuel_names+self.pseudo_fuel_comps])))
         for f in fuel_names:
             print_tup = (f, self.balance_dict['M'][self.comp_names.index(f)], self.balance_dict['O'][self.comp_names.index(f)])
             message += '     {:<20}{:<25}{:<25}\n'.format(*print_tup)

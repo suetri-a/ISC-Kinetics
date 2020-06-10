@@ -12,8 +12,10 @@ class ConstrainedDEOptimizer(BaseOptimizer):
         self.constraint_loss_values = []
         
     def cost_fun(self, x):
-        
-        cost = self.base_cost(x) # base cost set from options
+        if np.sum(np.abs(self.kinetic_cell.compute_residuals(x)))>1e-4:
+            cost = 1e6
+        else:
+            cost = self.base_cost(x) # base cost set from options
 
         # Log optimization status
         with open(self.log_file, 'a+') as fileID:
@@ -30,20 +32,25 @@ class ConstrainedDEOptimizer(BaseOptimizer):
         # Warm start initial guess
         if self.warm_start_complete:
             x0 = np.load(os.path.join(self.load_dir,'warm_start.npy'))
+            with open(os.path.join(self.load_dir, 'warm_start_bounds.pkl'), 'rb') as fp:
+                bnds = pickle.load(fp)
             print('Warm start loaded!')
 
         else:
             def res_fun(x): return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
             x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
                                                             res_fun, self.kinetic_cell.param_types)
-            x0 = self.warm_start(x0, self.kinetic_cell.param_types)
+            x0, bnds = self.warm_start(x0, self.kinetic_cell.param_types)
             np.save(os.path.join(self.load_dir,'warm_start.npy'), x0)
             np.save(os.path.join(self.load_dir, 'total_loss.npy'), np.array(self.loss_values))
             np.save(os.path.join(self.load_dir,'function_evals.npy'), self.function_evals)
             
             self.warm_start_complete = True
-            with open(os.path.join(self.load_dir,'warm_start_complete.pkl'),'wb') as fp:
+            with open(os.path.join(self.load_dir, 'warm_start_complete.pkl'),'wb') as fp:
                 pickle.dump(self.warm_start_complete, fp)
+            
+            with open(os.path.join(self.load_dir, 'warm_start_bounds.pkl'),'wb') as fp:
+                pickle.dump(bnds, fp)
 
 
         # Optimize parameters
@@ -52,35 +59,54 @@ class ConstrainedDEOptimizer(BaseOptimizer):
             print('Optimized parameters loaded!')
         
         else:
-            
             cost_warm_start = self.cost_fun(x0)
             with open(self.log_file,'a+') as fileID:
                 print('Warm start completed. Cost: {}'.format(str(cost_warm_start)), file=fileID)
-
-            bnds = []
-            for i, p in enumerate(self.kinetic_cell.param_types):
-                if p[0]=='acteng':
-                    bnds.append((x0[i]-1.0, x0[i]+1.0))
-                if p[0]=='preexp':
-                    bnds.append((x0[i]-2.0, x0[i]+1.0))
-                if p[0]=='stoic':
-                    bnds.append((np.maximum(x0[i]-4.0, 1e-2), np.minimum(x0[i]+4.0, 40.0)))
-
-            # Form constraint
-            def constraint_fun(x):
-                return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
             
-            balance_constraint = NonlinearConstraint(constraint_fun, 0.0, 1e-8)
+            '''
+            # Form constraint
+            fuel_names_all = self.kinetic_cell.fuel_names + self.kinetic_cell.pseudo_fuel_comps
+            fuel_dict = {}
+            for i in range(self.kinetic_cell.num_rxns):
+                for s in self.kinetic_cell.reac_names[i]:
+                    if s in fuel_names_all:
+                        if s not in fuel_dict.keys():
+                            fuel_dict[s] = []
+                        fuel_dict[s].append(i)
+            
+            A = np.zeros((1,self.kinetic_cell.num_rxns))
+            for i in range(self.kinetic_cell.num_rxns):
+                a_reac = np.zeros((1,self.kinetic_cell.num_rxns))
+                a_reac[0,i] = -1
+
+                for s in self.kinetic_cell.prod_names[i]:
+                    if s in fuel_names_all:
+                        for i in fuel_dict[s]:
+                            a_prod = np.copy(a_reac)
+                            a_prod[0,i] = 1
+                            A = np.concatenate((A,a_prod))
+            A = A[1:,:]
+            acteng_inds = [i for i,p in enumerate(self.kinetic_cell.param_types) if p[0]=='acteng']
+            '''
+
+            popsize = 10
+            maxiter = 100
+            # res_constraint = NonlinearConstraint(lambda x: (np.array(self.kinetic_cell.compute_residuals(x))).flatten(), -1e-3, 1e-3)
+            # acteng_constraint = NonlinearConstraint(lambda x: np.squeeze(np.dot(A, x[acteng_inds])), 0, np.inf)
+            init = np.expand_dims(x0, 0) + 0.05*np.random.randn(popsize,x0.shape[0])
             
             # Run optimization
-            popsize=20
-            x_init = np.expand_dims(x0,0) + np.random.normal(loc=0.0, scale=0.1, size=(x0.shape[0]*popsize, x0.shape[0]))
-            result = differential_evolution(self.cost_fun, bnds, init=x_init, constraints=(balance_constraint), popsize=popsize)
+            result = differential_evolution(self.cost_fun, bnds, popsize=popsize, init=init, polish=True, maxiter=maxiter)
             self.sol = result.x
             
-            cost_final = self.cost_fun(self.sol)
+            cost_final = self.base_cost(self.sol, save_filename=os.path.join(self.figs_dir, 'final_results', 'final_O2_overlay.png'))
             with open(self.log_file, 'a+') as fileID:
                 print('Optimization completed. Final cost: {}.'.format(str(cost_final)), file=fileID)
+
+            with open(self.report_file, 'a+') as fileID:
+                print('================================== Optimization Logging ==================================\n\n', file=fileID)
+                self.kinetic_cell.log_status(self.sol, fileID)
+                print('Final cost: {}'.format(str(cost_final)), file=fileID)
             
             # Save data
             np.save(os.path.join(self.load_dir, 'total_loss.npy'), np.array(self.loss_values))

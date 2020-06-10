@@ -62,22 +62,51 @@ class ConstrainedParticleSwarmOptimizer(BaseOptimizer):
                 print('Warm start completed. Cost: {}'.format(str(cost_warm_start)), file=fileID)
 
             # Form constraint
-            def constraint_fun1(x):
-                return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
+            fuel_names_all = self.kinetic_cell.fuel_names + self.kinetic_cell.pseudo_fuel_comps
+            fuel_dict = {}
+            for i in range(self.kinetic_cell.num_rxns):
+                for s in self.kinetic_cell.reac_names[i]:
+                    if s in fuel_names_all:
+                        if s not in fuel_dict.keys():
+                            fuel_dict[s] = []
+                        fuel_dict[s].append(i)
 
-            def constraint_fun2(x):
-                return -1*np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
+            A = np.zeros((1,self.kinetic_cell.num_rxns))
+            for i in range(self.kinetic_cell.num_rxns):
+                a_reac = np.zeros((1,self.kinetic_cell.num_rxns))
+                a_reac[0,i] = -1
+
+                for s in self.kinetic_cell.prod_names[i]:
+                    if s in fuel_names_all:
+                        for i in fuel_dict[s]:
+                            a_prod = np.copy(a_reac)
+                            a_prod[0,i] = 1
+                            A = np.concatenate((A,a_prod))
+            A = A[1:,:]
+            acteng_inds = [i for i,p in enumerate(self.kinetic_cell.param_types) if p[0]=='acteng']
+
+            def constraint_fun(x):
+                out1 = (np.array(self.kinetic_cell.compute_residuals(x))).flatten()
+                out2 = -1*np.copy(out1)
+                out3 = np.squeeze(np.dot(A, x[acteng_inds]))
+                out = np.concatenate((out1, out2, out3))
+                return out  
                         
             # Run optimization
             lb, ub = [l for l,u in bnds], [ u for l,u in bnds ]
             lb = np.minimum(lb, ub)
             ub = np.maximum(lb, ub)
-            self.sol, _ = pso(self.cost_fun, lb, ub, swarmsize=50, maxiter=50, phip=0.5, phig=0.75, 
-                                ieqcons=[constraint_fun1, constraint_fun2])
+            self.sol, _ = pso(self.cost_fun, lb, ub, swarmsize=20, maxiter=50, phip=0.25, phig=0.75, 
+                                f_ieqcons=constraint_fun)
             
-            cost_final = self.cost_fun(self.sol)
+            cost_final = self.base_cost(self.sol, save_filename=os.path.join(self.figs_dir, 'final_results', 'final_O2_overlay.png'))
             with open(self.log_file, 'a+') as fileID:
                 print('Optimization completed. Final cost: {}.'.format(str(cost_final)), file=fileID)
+
+            with open(self.report_file, 'a+') as fileID:
+                print('================================== Optimization Logging ==================================\n\n', file=fileID)
+                self.kinetic_cell.log_status(self.sol, fileID)
+                print('Final cost: {}'.format(str(cost_final)), file=fileID)
             
             # Save data
             np.save(os.path.join(self.load_dir, 'total_loss.npy'), np.array(self.loss_values))

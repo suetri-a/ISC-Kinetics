@@ -65,7 +65,7 @@ class ConstrainedSLSQPOptimizer(BaseOptimizer):
             result = minimize(self.cost_fun, x0, method='SLSQP', bounds=bnds, constraints=(constraint_dict))
             self.sol = result.x
             
-            cost_final = self.cost_fun(self.sol, save_filename=os.path.join(self.figs_dir, 'final_results', 'final_O2_overlay.png'))
+            cost_final = self.base_cost(self.sol, save_filename=os.path.join(self.figs_dir, 'final_results', 'final_O2_overlay.png'))
             with open(self.log_file, 'a+') as fileID:
                 print('Optimization completed. Final cost: {}.'.format(str(cost_final)), file=fileID)
 

@@ -324,16 +324,16 @@ class MasterVKC(RtoBase):
 *PRES *CON   100
 *TEMP *CON   {T_init}
 **VERTICAL OFF
-*SW *CON 0.2549
-*SO *CON 0.1322
-*SG *CON 0.6129
+*SW *CON {WAT_SAT}
+*SO *CON {OIL_SAT}
+*SG *CON {GAS_SAT}
 
 *MFRAC_WAT 'H2O' *CON 1.00
 *MFRAC_OIL 'Oil' *CON 1.00
-*MFRAC_GAS 'N2' *CON 0.79
+*MFRAC_GAS 'N2' *CON {N2_con}
 *MFRAC_GAS 'CO2' *CON 0.00
 *MFRAC_GAS 'CO' *CON 0.00
-*MFRAC_GAS 'O2' *CON 0.21
+*MFRAC_GAS 'O2' *CON {O2_con}
 
 **INITREGION 1
 **SW *IJK 
@@ -344,21 +344,21 @@ class MasterVKC(RtoBase):
 
 **SO *IJK 
 **OIL_SAT
-**		 1 1 1:11 {OIL_SAT}
+**		 1 1 1:11 1.0
 **O_SATEND
 **         2 1 1:11 0.0
 
 **SG *IJK 
 **GAS_SAT
-**	     1 1 1:11 {GAS_SAT}
+**	     1 1 1:11 1.0
 **G_SATEND
 **         2 1 1:11 0.0
 
 **MFRAC_GAS 'N2' CON       1
-**MFRAC_GAS 'O2' *con {O2_con}
-**MFRAC_GAS 'N2' *con {N2_con}      
+**MFRAC_GAS 'O2' *con 0.21
+**MFRAC_GAS 'N2' *con 0.79      
 
-              """.format(T_init=IC_dict['Temp'], OIL_SAT=IC_dict['Oil'], GAS_SAT=1-IC_dict['Oil'], 
+              """.format(T_init=IC_dict['Temp'], WAT_SAT=0.0, OIL_SAT=IC_dict['Oil'], GAS_SAT=1-IC_dict['Oil'], 
                         O2_con=IC_dict['O2'], N2_con=1-IC_dict['O2']), 
                         file = fileID)
 
