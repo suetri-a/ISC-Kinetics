@@ -151,7 +151,7 @@ class RtoBase(ABC):
         exe_path='"C:\\Program Files (x86)\\CMG\\STARS\\2017.10\\Win_x64\\EXE\\st201710.exe"'
         cd_path='cd C:\\Users\\yunanli\\Desktop\\CMG\\VKC '
         '''
-        os_system_line = 'cd ' + cd_path + ' & ' + exe_path + '  -f ' + f'"{self.input_file_name}"' + '.dat'
+        os_system_line = 'cd {} & {} -f {}.dat -log simulation_log.log'.format(cd_path, exe_path, self.input_file_name)
         os.system(os_system_line)
         self.sim_completed = True
 

@@ -35,9 +35,10 @@ class ConstrainedSLSQPOptimizer(BaseOptimizer):
             print('Warm start loaded!')
 
         else:
-            def res_fun(x): return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
-            x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
-                                                            res_fun, self.kinetic_cell.param_types)
+            def res_fun(x): return np.sum(np.abs(self.kinetic_cell.compute_residuals(x)))
+            # x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
+            #                                                 res_fun, self.kinetic_cell.param_types)
+            x0 = None
             x0, bnds = self.warm_start(x0, self.kinetic_cell.param_types)
             np.save(os.path.join(self.load_dir,'warm_start.npy'), x0)
             np.save(os.path.join(self.load_dir, 'total_loss.npy'), np.array(self.loss_values))

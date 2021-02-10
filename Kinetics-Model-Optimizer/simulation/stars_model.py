@@ -3,8 +3,10 @@ import scipy as sp
 import pandas as pd
 import networkx as nx
 import os, pickle
+import shutil, glob
+import string, random
 
-from scipy.optimize import nnls
+from scipy.optimize import nnls, minimize, lsq_linear
 
 import utils.stars as stars
 import utils.stars.rto as rto
@@ -40,8 +42,7 @@ class STARSModel(KineticCellBase):
         mkdirs([self.cd_path])
         self.exe_path = opts.stars_exe_path
         
-        vkc_class = rto.get_vkc_model(opts.stars_base_model)
-        self.vkc_model = vkc_class(folder_name=self.cd_path, input_file_name=self.base_filename)
+        self.vkc_class = rto.get_vkc_model(opts.stars_base_model)
         self.num_stars_calls = 0
 
         if opts.load_from_saved:
@@ -80,7 +81,7 @@ class STARSModel(KineticCellBase):
 
         # Perform maximal matching with given weighting scheme
         U, V, G = self.get_rxn_fuel_graph()
-        matches = nx.algorithms.bipartite.minimum_weight_full_matching(G)
+        matches = nx.algorithms.bipartite.minimum_weight_full_matching(G, top_nodes=U)
 
         # Reactions for mapping material properties or coefficients
         self.map_rxns_material = [U.index(matches[v]) for v in V] # rxns to solve for fuels
@@ -88,7 +89,11 @@ class STARSModel(KineticCellBase):
 
         # Reactions for determining coefficients before material mapping
         oxy_fuels = self.get_oxy_fuels() # coeffs on material rxns
-        self.map_rxns_oxy = [r for r in self.map_rxns_material if all([c not in oxy_fuels for c in self.reac_names[r]+self.prod_names[r]])]
+        self.map_rxns_oxy = []
+        for r in self.map_rxns_material:
+            if all([c not in oxy_fuels for c in self.reac_names[r]]) and \
+                    not all([c not in self.fuel_names for c in self.prod_names[r]]):
+                self.map_rxns_oxy.append(r)
 
 
     def add_stoic_coeff_params(self, r):
@@ -104,6 +109,7 @@ class STARSModel(KineticCellBase):
         spec_const = [c[2] for c in self.rxn_constraints if c[0]==r+1]
         weight = len(spec_rxn) - len(spec_const) - 1 
 
+        # Calculate how many degrees of freedom in the reaction based on update rule
         if r in self.map_rxns_material:
             if r in self.map_rxns_oxy:
                 pk = np.maximum(0, weight - 1)
@@ -120,6 +126,7 @@ class STARSModel(KineticCellBase):
                 param_types_temp.append(['stoic', r, spec_rxn[spec_ind]])
                 param_count+=1
             spec_ind+=1
+
         return param_types_temp
 
 
@@ -142,11 +149,14 @@ class STARSModel(KineticCellBase):
         oxy_fuels = self.get_oxy_fuels()
         for i, _ in enumerate(U):
             for j, v in enumerate(V):
-                if v in oxy_fuels:
-                    G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]))
+                if v in self.reac_names[i]+self.prod_names[i]:
+                    if v in oxy_fuels:
+                        G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]))
+                    else:
+                        G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]-1))
                 else:
-                    G.add_edge(U[i], V[j], weight = np.maximum(0,weights[i]-1))
-
+                    G.add_edge(U[i], V[j], weight=1e6)
+        
         return U, V, G
 
 
@@ -376,11 +386,11 @@ class STARSModel(KineticCellBase):
             prod_coeff_temp = prod_coeff_temp[independent_inds]
 
             # Solve for coefficients of independent non-fuel species
-            coeff_independent = self.solve_nnls_problem(AM,  reac_coeff_temp + prod_coeff_temp)
+            bnds = (0.0, np.inf)
+            coeff_independent = self.solve_nnls_problem(AM,  reac_coeff_temp + prod_coeff_temp, bounds=bnds)
             
             # Map independent species into all species
             coeff_all = np.dot(M, coeff_independent)
-            coeff_all = np.maximum(coeff_all, 0.01)
 
             # Extract indices from calculated coefficients
             reac_coeffs[r,reac_oxy_inds] = coeff_all[reac_oxy_inds]
@@ -394,7 +404,7 @@ class STARSModel(KineticCellBase):
         Solve material/elemental balances for pseudocomponents
 
         '''
-        # Enforce coefficient constraints 
+        # Enforce coefficient constraints
         for r in self.map_rxns_material:
             M = self.get_constraint_matrix(r)
 
@@ -413,8 +423,11 @@ class STARSModel(KineticCellBase):
         A = np.stack([reac_coeffs[r,:] - prod_coeffs[r,:] for r in self.map_rxns_material])
         for b in self.balances:
             if np.isnan(np.sum(self.balance_dict[b])): # check if any unknowns for balance b
-                self.balance_dict[b] = np.maximum(self.solve_nnls_problem(A, self.balance_dict[b]), 1e-3)
-
+                if b=='O':
+                    bnds = (0.0, 20.0)
+                elif b=='M':
+                    bnds = (1e-3, 1.0)
+                self.balance_dict[b] = self.solve_nnls_problem(A, self.balance_dict[b], bounds=bnds)
         return reac_coeffs, prod_coeffs
 
 
@@ -424,14 +437,14 @@ class STARSModel(KineticCellBase):
         '''
         # Stack vectors from material balances
         A = np.stack([self.balance_dict[b] for b in self.balances])
-
+        # print(self.map_rxns_coeff)
         for r in self.map_rxns_coeff:
             # Get indices for reactants and products
             reac_inds = [i for i, c in enumerate(self.comp_names) if c in self.reac_names[r]]
             prod_inds = [i for i, c in enumerate(self.comp_names) if c in self.prod_names[r]]
 
             # Negate product columns
-            A_temp = A
+            A_temp = np.copy(A)
             A_temp[:,prod_inds] *= -1
 
             # Enforce equality constraints
@@ -441,11 +454,11 @@ class STARSModel(KineticCellBase):
             # Solve coefficients for independent species
             independent_specs = self.get_independent_species(r)
             independent_inds = [self.comp_names.index(c) for c in independent_specs]
-            coeff_independent = self.solve_nnls_problem(AM,  reac_coeffs[r,independent_inds] + prod_coeffs[r,independent_inds])
+            bnds = (0.0, np.inf)
+            coeff_independent = self.solve_nnls_problem(AM,  reac_coeffs[r,independent_inds] + prod_coeffs[r,independent_inds], bounds=bnds)
             
             # Map independent species into all species
             coeff_all = np.dot(M, coeff_independent)
-            coeff_all = np.maximum(coeff_all, 0.01)
 
             # Extract indices from calculated coefficients
             reac_coeffs[r,reac_inds] = coeff_all[reac_inds]
@@ -455,7 +468,7 @@ class STARSModel(KineticCellBase):
 
 
     @staticmethod
-    def solve_nnls_problem(A_in, x):
+    def solve_nnls_problem(A_in, x, bounds = (-np.inf, np.inf)):
         '''
         Solves non-negative least-squares problem for mapping parameters
 
@@ -463,13 +476,12 @@ class STARSModel(KineticCellBase):
                     A_in x = 0
             where x[known_inds] are known 
         '''
-        
         known_inds = [i for i in range(x.shape[0]) if not np.isnan(x[i])] 
         unknown_inds = [i for i in range(x.shape[0]) if np.isnan(x[i])]
         b = -1*np.dot(A_in[:,known_inds], x[known_inds])
         A = A_in[:,unknown_inds]
-        result = nnls(A, b)
-        x[unknown_inds], _ = np.squeeze(result)
+        result = np.linalg.solve(A, b)
+        x[unknown_inds] = np.minimum(np.maximum(result, bounds[0]), bounds[1])
         return x
 
 
@@ -480,6 +492,14 @@ class STARSModel(KineticCellBase):
     def run_RTO_simulation(self, REAC_COEFFS=None, PROD_COEFFS=None, REAC_ORDERS=None, PROD_ORDERS=None,
                             ACT_ENERGY=None, PREEXP_FAC=None, HEATING_DATA=None, IC=None):
 
+        # Spawn VKC model instance
+        letters = string.ascii_lowercase
+        rnd_dir = ''.join(random.choice(letters) for i in range(16))
+        star_dir = os.path.join(self.results_dir + 'stars', rnd_dir,'')
+        
+        mkdirs([star_dir])
+        vkc_model = self.vkc_class(folder_name=star_dir, input_file_name=self.base_filename)
+        
         # Assemble STARS components
         stars_components = stars.get_component_dict(self.comp_names)
         for i, name in enumerate(self.comp_names):
@@ -520,12 +540,12 @@ class STARSModel(KineticCellBase):
                 }
 
         # Run stars runfile
-        self.vkc_model.write_dat_file(**write_dict)
-        self.vkc_model.run_dat_file(self.exe_path, self.cd_path)
+        vkc_model.write_dat_file(**write_dict)
+        vkc_model.run_dat_file(self.exe_path, star_dir)
 
         # Parse output from STARS
-        self.vkc_model.parse_stars_output()
-        t, ydict = self.vkc_model.get_reaction_dict()
+        vkc_model.parse_stars_output()
+        t, ydict = vkc_model.get_reaction_dict()
         
         # Update logging information
         self.num_stars_calls += 1
@@ -543,6 +563,9 @@ class STARSModel(KineticCellBase):
             df_out['Temp'] = ydict['Temp']
             df_out.to_excel(os.path.join(self.results_dir, 'sim_data.xls'))
 
+        # Delete STARS folder
+        shutil.rmtree(star_dir)
+
         return t, ydict
 
 
@@ -554,3 +577,9 @@ class STARSModel(KineticCellBase):
         Callback function specific to the model. Optional to implement.
         '''
         print('Total number of STARS simulation calls: {calls}'.format(calls=self.num_stars_calls), file=log_file)
+
+
+    def clean_up(self):
+        dirs = glob.glob(os.path.join(self.results_dir + 'stars', '*'))
+        for d in dirs:
+            shutil.rmtree(d)

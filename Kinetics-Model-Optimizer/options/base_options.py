@@ -1,5 +1,6 @@
 import argparse
 import os
+import json
 import simulation
 import optimization
 import data
@@ -127,7 +128,7 @@ class KineticCellOptions():
         message += '----------------- End -------------------'
         print(message)
 
-        # save to the disk
+        # write options to text file
         expr_dir = os.path.join(opt.results_dir, opt.name)
         utils.mkdirs(expr_dir)
         type_of_exp = 'optimization' if self.isOptimization else 'simulation'
@@ -136,6 +137,10 @@ class KineticCellOptions():
             opt_file.write(message)
             opt_file.write('\n')
 
+        # save options as json object for easy loading
+        file_name = os.path.join(expr_dir, '{}_opt.json'.format(type_of_exp))
+        with open(file_name, 'w') as fp:
+            json.dump(opt.__dict__, fp)
 
     def parse(self):
         '''

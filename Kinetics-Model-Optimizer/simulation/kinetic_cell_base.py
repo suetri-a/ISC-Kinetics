@@ -4,8 +4,7 @@ import argparse
 import os, sys, pickle
 
 import matplotlib.pyplot as plt
-from scipy.optimize import fminbound
-from scipy.optimize import minimize
+from scipy.optimize import fminbound, minimize, nnls
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from scipy.signal import resample
@@ -47,7 +46,7 @@ class KineticCellBase(ABC):
 
         self.fuel_names = opts.fuel_comps
         self.pseudo_fuel_comps = [f for f in opts.pseudo_fuel_comps if f in self.comp_names]
-        self.fuel_inds = [self.comp_names.index[r] for r in opts.reac_names if r in opts.fuel_comps or r in opts.pseudo_fuel_comps]
+        self.fuel_inds = [self.comp_names.index(r) for names in opts.reac_names for r in names if r in opts.fuel_comps or r in opts.pseudo_fuel_comps]
 
         # Parameter bounds dictionary
         self.lb = {'reaccoeff': opts.stoic_coeff_lower, 'prodcoeff': opts.stoic_coeff_lower, 
@@ -147,6 +146,13 @@ class KineticCellBase(ABC):
         '''
         pass
 
+        
+    def clean_up(self):
+        '''
+        Callback function to clean up extra files from the simulation
+
+        '''
+        pass
 
     ###########################################################
     #### END REQUIRED METHODS
@@ -168,11 +174,11 @@ class KineticCellBase(ABC):
         '''
         # Check if parameters are different from current parameters or O2 consumption is empty
         reac_coeff, prod_coeff, reac_order, prod_order, e_act, pre_exp_fac = self.map_parameters(x)
-        print('Running RTO simulation....')
+        # print('Running RTO simulation....')
         t, y_dict = self.run_RTO_simulation(REAC_COEFFS=reac_coeff, PROD_COEFFS=prod_coeff, REAC_ORDERS=reac_order,
                                             PROD_ORDERS=prod_order, ACT_ENERGY=e_act, PREEXP_FAC=pre_exp_fac,
                                             HEATING_DATA=heating_data, IC=IC)
-        print('Finished RTO simulation!')
+        # print('Finished RTO simulation!')
 
         y_dict_out = {'Time': t, 'O2': np.maximum(IC['O2'] - y_dict['O2'], 0), 'CO2': y_dict['CO2'], 'Temp': y_dict['Temp']}
         return y_dict_out

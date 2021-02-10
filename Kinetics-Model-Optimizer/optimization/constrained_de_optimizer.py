@@ -38,9 +38,9 @@ class ConstrainedDEOptimizer(BaseOptimizer):
 
         else:
             def res_fun(x): return np.sum(np.power(self.kinetic_cell.compute_residuals(x),2))
-            x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
-                                                            res_fun, self.kinetic_cell.param_types)
-            x0, bnds = self.warm_start(x0, self.kinetic_cell.param_types)
+            # x0 = self.data_container.compute_initial_guess(self.kinetic_cell.reac_names, self.kinetic_cell.prod_names,
+            #                                                 res_fun, self.kinetic_cell.param_types)
+            x0, bnds = self.warm_start(None, self.kinetic_cell.param_types)
             np.save(os.path.join(self.load_dir,'warm_start.npy'), x0)
             np.save(os.path.join(self.load_dir, 'total_loss.npy'), np.array(self.loss_values))
             np.save(os.path.join(self.load_dir,'function_evals.npy'), self.function_evals)
@@ -62,37 +62,9 @@ class ConstrainedDEOptimizer(BaseOptimizer):
             cost_warm_start = self.cost_fun(x0)
             with open(self.log_file,'a+') as fileID:
                 print('Warm start completed. Cost: {}'.format(str(cost_warm_start)), file=fileID)
-            
-            '''
-            # Form constraint
-            fuel_names_all = self.kinetic_cell.fuel_names + self.kinetic_cell.pseudo_fuel_comps
-            fuel_dict = {}
-            for i in range(self.kinetic_cell.num_rxns):
-                for s in self.kinetic_cell.reac_names[i]:
-                    if s in fuel_names_all:
-                        if s not in fuel_dict.keys():
-                            fuel_dict[s] = []
-                        fuel_dict[s].append(i)
-            
-            A = np.zeros((1,self.kinetic_cell.num_rxns))
-            for i in range(self.kinetic_cell.num_rxns):
-                a_reac = np.zeros((1,self.kinetic_cell.num_rxns))
-                a_reac[0,i] = -1
 
-                for s in self.kinetic_cell.prod_names[i]:
-                    if s in fuel_names_all:
-                        for i in fuel_dict[s]:
-                            a_prod = np.copy(a_reac)
-                            a_prod[0,i] = 1
-                            A = np.concatenate((A,a_prod))
-            A = A[1:,:]
-            acteng_inds = [i for i,p in enumerate(self.kinetic_cell.param_types) if p[0]=='acteng']
-            '''
-
-            popsize = 10
+            popsize = x0.shape[0]
             maxiter = 100
-            # res_constraint = NonlinearConstraint(lambda x: (np.array(self.kinetic_cell.compute_residuals(x))).flatten(), -1e-3, 1e-3)
-            # acteng_constraint = NonlinearConstraint(lambda x: np.squeeze(np.dot(A, x[acteng_inds])), 0, np.inf)
             init = np.expand_dims(x0, 0) + 0.05*np.random.randn(popsize,x0.shape[0])
             
             # Run optimization

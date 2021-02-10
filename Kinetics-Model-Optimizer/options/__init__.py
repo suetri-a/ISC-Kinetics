@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import json
 
 def set_reaction_defaults(parser, reaction_model):
 
@@ -18,26 +20,10 @@ def set_reaction_defaults(parser, reaction_model):
                             heat_reaction='[0,-1e4,0,-2e4,0,-5e4]',
                             pre_exp_factors='[1e1,1e1,1e-1,1e-1,1e-3,1e-3]',
                             act_energies='[1e5,5e4,6e4,8e4,8e4,1e5]',
-                            rxn_constraints='[[2,O2,CO2,0.5],[2,O2,CO,0.21],[4,O2,CO2,0.87],[4,O2,CO,0.286]]',
+                            rxn_constraints='[[2,CO2,CO,0.2],[4,CO2,CO,0.2]]', #'[[2,O2,CO2,0.5],[2,O2,CO,0.21],[4,O2,CO2,0.87],[4,O2,CO,0.286]]',
                             init_coeff=('[[1,O2,30],[1,Coke1,10],[1,H2O,2],[2,O2,5],[2,CO,0.3181],[2,CO2,0.75],[2,H2O,1.3815],'
                                         '[3,Coke2,1.3824],[4,O2,0.65],[4,CO,0.1862],[4,CO2,0.5652],[4,H2O,0.2393],'
                                         '[5,Coke3,0.9135],[6,O2,0.9],[6,CO,0.2]]'))
-
-        # reac_names = [['Oil','O2'], ['Coke1', 'O2'], ['Coke1'], ['Coke2', 'O2'], ['Coke1'], ['Coke3', 'O2']] 
-        # prod_names = [['Coke1', 'H2O'], ['CO', 'CO2', 'H2O'], ['Coke2'], ['CO', 'CO2', 'H2O'], ['Coke3'], ['CO', 'CO2']] 
-        
-        # heat_reaction = np.array([0, -1e4, 0, -2e4, 0, -5e4])
-        # pre_exp_factors = np.array([1e1, 1e1, 1e-1, 1e-1, 1e-3, 1e-3])
-        # act_energies = np.array([1e5, 5e4, 6e4, 8e4, 8e4, 1e5])
-
-        # rxn_constraints = [[2, 'O2', 'CO2', 0.5], [2, 'O2', 'CO', 0.21], 
-        #     [4, 'O2', 'CO2', 1/1.15], [4, 'O2', 'CO', 0.286]]
-        # init_coeff = [[1, 'O2',30], [1, 'Coke1', 10], [1, 'H2O', 2],
-        #     [2, 'O2', 5], [2, 'CO', 0.3181], [2, 'CO2', 0.75], [2, 'H2O', 1.3815], 
-        #     [3, 'Coke2', 1.3824], 
-        #     [4, 'O2', 0.65], [4, 'CO', 0.1862], [4, 'CO2', 0.5652], [4, 'H2O', 0.2393],
-        #     [5, 'Coke3', 0.9135],
-        #     [6, 'O2', 0.9], [6, 'CO', 0.2]]
     
 
     elif reaction_model == 'CinarMod1':
@@ -55,26 +41,11 @@ def set_reaction_defaults(parser, reaction_model):
                             heat_reaction='[0,-5e5,0,-4e5,-4e5]',
                             pre_exp_factors='[4.231e13,3.265e8,9.334e6,5.621e9,1.621e10]',
                             act_energies='[8.62e4,9.29e4,8.0e4,1.21e5,1e5]',
-                            rxn_constraints=('[[2,O2,CO2, .87],[2,O2,CO,0.67],[4,O2,CO2,0.77],[4,O2,CO,0.315],'
-                                            '[5,O2,CO2,0.667],[5,O2,CO,0.5133]]'),
+                            # rxn_constraints=('[[2,O2,CO2, .87],[2,O2,CO,0.67],[4,O2,CO2,0.77],[4,O2,CO,0.315],'
+                            #                 '[5,O2,CO2,0.667],[5,O2,CO,0.5133]]'),
+                            rxn_constraints='[[2,CO2,CO,0.75],[4,CO2,CO,0.4],[5,CO2,CO,0.75]]',
                             init_coeff=('[[1,Coke1,5],[1,Coke3,5],[2,O2,7.5],[2,CO,0.5],[2,H2O,2],[3,Coke2,5],'
                                         '[4,O2,1.1],[4,CO,0.4],[4,H2O,2],[5,O2,7.5],[5,CO,0.5],[5,H2O,2]]'))
-
-        # reac_names = [['Oil'], ['Coke1', 'O2'], ['Oil'], ['Coke2', 'O2'], ['Coke3', 'O2']] 
-        # prod_names = [['Coke1', 'Coke3'], ['CO', 'CO2', 'H2O'], ['Coke2'], ['CO', 'CO2', 'H2O'], ['CO', 'CO2', 'H2O']] 
-        
-        # heat_reaction = np.array([0, -5e5, 0, -4e5, -4e5])
-        # pre_exp_factors = np.array([4.231e13, 3.265e8, 9.334e6, 5.621e9, 1.621e10])
-        # act_energies = np.array([8.62e4,  9.29e4,  8.0e4, 1.21e5, 1e5])
-
-        # rxn_constraints = [[2, 'O2', 'CO2', 1/1.15], [2, 'O2', 'CO', 0.77/1.15], 
-        #     [4, 'O2', 'CO2', 1/1.3], [4, 'O2', 'CO', 0.41/1.3], 
-        #     [5, 'O2', 'CO2', 1/1.5], [5, 'O2', 'CO', 0.77/1.5]]
-        # init_coeff = [[1, 'Coke1', 5], [1, 'Coke3', 5],
-        #     [2, 'O2', 7.5], [2, 'CO', 0.5], [2, 'H2O', 2], 
-        #     [3, 'Coke2', 5],
-        #     [4, 'O2', 1.1], [4, 'CO', 0.4], [4, 'H2O', 2], 
-        #     [5, 'O2', 7.5], [5, 'CO', 0.5], [5, 'H2O', 2]]
     
 
     elif reaction_model == 'CinarMod2':
@@ -91,23 +62,9 @@ def set_reaction_defaults(parser, reaction_model):
                             heat_reaction='[0,-5e5,0,-4e5]',
                             pre_exp_factors='[4.231e13,3.265e8,9.334e6,5.621e9]',
                             act_energies='[8.62e4,9.29e4,8.0e4,1.21e5]',
-                            rxn_constraints='[[2,O2,CO2,0.87],[2,O2,CO,0.67],[4,O2,CO2,0.77],[4,O2,CO,0.315]]',
+                            rxn_constraints='[[2,CO2,CO,0.2],[4,CO2,CO,0.2]]',# '[[2,O2,CO2,0.87],[2,O2,CO,0.67],[4,O2,CO2,0.77],[4,O2,CO,0.315]]',
                             init_coeff=('[[1,Coke1,7],[2,O2,7.5],[2,CO,0.5],[2,H2O,5],' 
                                         '[3,Coke2,19],[4,O2,1.2],[4,CO,0.4],[4,H2O,5]]'))
-
-        # reac_names = [['Oil'], ['Coke1', 'O2'], ['Oil'], ['Coke2', 'O2']] 
-        # prod_names = [['Coke1'], ['CO', 'CO2', 'H2O'], ['Coke2'], ['CO', 'CO2', 'H2O']] 
-        
-        # heat_reaction = np.array([0, -5e5, 0, -4e5])
-        # pre_exp_factors = np.array([4.231e13, 3.265e8, 9.334e6, 5.621e9])
-        # act_energies = np.array([8.62e4, 9.29e4, 8.0e4, 1.21e5])
-
-        # rxn_constraints = [[2, 'O2', 'CO2', 1/1.15], [2, 'O2', 'CO', 0.77/1.15], 
-        #     [4, 'O2', 'CO2', 1/1.3], [4, 'O2', 'CO', 0.41/1.3]]
-        # init_coeff = [[1, 'Coke1', 7], 
-        #     [2, 'O2', 7.5], [2, 'CO', 0.5], [2, 'H2O', 5], 
-        #     [3, 'Coke2', 19], 
-        #     [4, 'O2', 1.2], [4, 'CO', 0.4], [4, 'H2O', 5]]
     
 
     elif reaction_model == 'CinarMod3':
@@ -123,23 +80,10 @@ def set_reaction_defaults(parser, reaction_model):
                             heat_reaction='[0,-5e5,0,-4e5]',
                             pre_exp_factors='[4.231e13,3.265e8,9.334e6,5.621e9]',
                             act_energies='[8.62e4,9.29e4,8.0e4,1.21e5]',
-                            rxn_constraints='[[2,O2,CO2,0.87],[2,O2,CO,0.67],[4,O2,CO2,0.769],[4,O2,CO,0.315]]',
+                            # rxn_constraints='[[2,O2,CO2,0.87],[2,O2,CO,0.67],[4,O2,CO2,0.769],[4,O2,CO,0.315]]',
+                            rxn_constraints='[[2,CO2,CO,0.75],[4,CO2,CO,0.4]]',
                             init_coeff=('[[1,Coke1,10],[2,O2,7.5],[2,CO,0.5],[2,H2O,24],[3,Coke2,1.033],' 
                                         '[4,O2,1.2],[4,CO,0.4],[4,H2O,1]]'))
-
-        # reac_names = [['Oil'], ['Coke1', 'O2'], ['Coke1'], ['Coke2', 'O2']] 
-        # prod_names = [['Coke1'], ['CO', 'CO2', 'H2O'], ['Coke2'], ['CO', 'CO2', 'H2O']] 
-        
-        # heat_reaction = np.array([0, -5e5, 0, -4e5])
-        # pre_exp_factors = np.array([4.231e13, 3.265e8, 9.334e6, 5.621e9])
-        # act_energies = np.array([8.62e4, 9.29e4, 8.0e4, 1.21e5])
-
-        # rxn_constraints = [[2, 'O2', 'CO2', 1/1.15], [2, 'O2', 'CO', 0.77/1.15], 
-        #     [4, 'O2', 'CO2', 1/1.3], [4, 'O2', 'CO', 0.41/1.3]]
-        # init_coeff = [[1, 'Coke1', 10], 
-        #     [2, 'O2', 7.5], [2, 'CO', 0.5], [2, 'H2O', 24], 
-        #     [3, 'Coke2', 1.033], 
-        #     [4, 'O2', 1.2], [4, 'CO', 0.4], [4, 'H2O', 1]]
     
 
     elif reaction_model == 'Chen1':
@@ -156,17 +100,6 @@ def set_reaction_defaults(parser, reaction_model):
                             act_energies='[5e2,4e4,9e4]',
                             rxn_constraints='[[2,O2,CO2,0.8333],[2,O2,CO,0.333],[3,O2,CO2,0.8333],[3,O2,CO,0.333]]',
                             init_coeff='[[1,Oil2,20],[2,Coke1,5],[2,O2,8],[3,O2,5],[3,H2O,2]]')
-
-        # reac_names = [['Oil'], ['Oil2', 'O2'], ['Coke1', 'O2']] 
-        # prod_names = [['Oil2'], ['Coke1', 'CO', 'CO2', 'H2O', 'Gas'], ['CO', 'CO2', 'H2O']] 
-        
-        # heat_reaction = [-1e3, -1e4, -4e4]
-        # pre_exp_factors = [1e-1, 1e-2, 1e0]
-        # act_energies = [5e2, 4e4, 9e4]
-
-        # rxn_constraints = [[2, 'O2', 'CO2', 5/6], [2, 'O2', 'CO', 1/3], 
-        #     [3, 'O2', 'CO2', 5/6], [3, 'O2', 'CO', 1/3]]
-        # init_coeff = [[1, 'Oil2', 20], [2, 'Coke1', 5], [2, 'O2', 8], [3, 'O2', 5], [3, 'H2O', 2]]
     
 
     elif reaction_model == 'Chen2':
@@ -183,17 +116,6 @@ def set_reaction_defaults(parser, reaction_model):
                             rxn_constraints='[[2,CO2,CO,0.5]]',
                             init_coeff='[[1,O2,5],[1,Oil2,10],[2,O2,5],[2,H2O,10],[2,CO2,6],[2,CO,3]]')
 
-        # reac_names = [['Oil', 'O2'], ['Oil2', 'O2']] 
-        # prod_names = [['Oil2'], ['CO', 'CO2', 'H2O']] 
-        
-        # heat_reaction = [-1e2, -4e3]
-        # pre_exp_factors = [1e0, 1e1]
-        # act_energies = [3e4, 6.5e4]
-
-        # # self.rxn_constraints = [[2, 'O2', 'CO2', 1], [2, 'CO2', 'CO', 0.2]]
-        # rxn_constraints = [[2, 'CO2', 'CO', 0.5]]
-        # init_coeff = [[1, 'O2', 5], [1, 'Oil2', 10], [2, 'O2', 5], [2, 'H2O', 10], [2, 'CO2', 6], [2, 'CO',3]]
-
 
     elif reaction_model == 'Dechelette1':
         '''
@@ -208,16 +130,6 @@ def set_reaction_defaults(parser, reaction_model):
                             act_energies='[5e4,9e4]',
                             rxn_constraints='[[2,O2,CO2,1]]',
                             init_coeff='[[1,O2,10],[2,O2,4],[2,CO2,4],[2,H2O,8]]')
-
-        # reac_names = [['Oil', 'O2'], ['Coke1', 'O2']] 
-        # prod_names = [['Coke1', 'CO2'], ['CO2', 'H2O']] 
-        
-        # heat_reaction = [-1e4, -4e4]
-        # pre_exp_factors = [1e-1, 1e-2]
-        # act_energies = [5e4, 9e4]
-
-        # rxn_constraints = [[2, 'O2', 'CO2', 1]]
-        # init_coeff = [[1, 'O2', 10], [2, 'O2', 4], [2, 'CO2', 4], [2, 'H2O', 8]]
 
 
     elif reaction_model == 'Dechelette2':
@@ -238,17 +150,6 @@ def set_reaction_defaults(parser, reaction_model):
                             init_coeff=('[[1,O2,4.24],[2,O2,33.8],[2,CO2,23.77],[2,CO,4.75],[2,H2O,22],' 
                                         '[3,O2,12.29],[3,CO2,8.56],[3,CO,1.75],[3,H2O,8]]'))
 
-        # reac_names = [['Oil', 'O2'], ['Coke1', 'O2'], ['Coke2', 'O2']] 
-        # prod_names = [['Coke1'], ['CO', 'CO2', 'H2O', 'Coke2'], ['CO', 'CO2', 'H2O']] 
-        
-        # heat_reaction = [0, -4e4, -5e4]
-        # pre_exp_factors = [1e-3, 25, 1]
-        # act_energies = [3.5e4, 7.3e4, 8e4]
-
-        # rxn_constraints = [[2, 'CO2', 'CO', 1/5], [3, 'CO2', 'CO', 1/5]]
-        # init_coeff = [[1, 'O2', 4.24], [2, 'O2', 33.8], [2, 'CO2', 23.77], [2, 'CO', 4.75], [2, 'H2O', 22], 
-        #     [3, 'O2', 12.29], [3, 'CO2', 8.56], [3, 'CO', 1.75], [3, 'H2O', 8]]
-
 
     elif reaction_model == 'Crookston':
         '''
@@ -260,7 +161,7 @@ def set_reaction_defaults(parser, reaction_model):
 
         '''
         parser.set_defaults(reac_names='[[Oil],[Oil2,O2],[Oil,O2],[Coke1,O2]]',
-                            prod_names='[[Oil2,Coke1,Gas],[CO2,H2O],[CO2,H2O],[CO2,H2O]]',
+                            prod_names='[[Oil2,Coke1,Gas],[CO2,CO,H2O],[CO2,CO,H2O],[CO2,CO,H2O]]',
                             heat_reaction='[-4.6e4,-2.19e5,-8.12e6,-5.2e4]',
                             pre_exp_factors='[5.04e-3,1.68e-2,1.68e-2,1.68e-2]',
                             act_energies='[5e3,7.75e4,1e5,5.4e4]',
@@ -269,17 +170,6 @@ def set_reaction_defaults(parser, reaction_model):
                                         '[3,O2,18.0],[3,CO2,12.0],[3,H2O,12.0],'
                                         '[4,O2,1.25],[4,CO2,1.0],[4,H2O,0.5]]'))
 
-        # reac_names = [['Oil'], ['Oil2', 'O2'], ['Oil', 'O2'], ['Coke1', 'O2']]
-        # prod_names = [['Oil2', 'Coke1', 'Gas'], ['CO2', 'H2O'], ['CO2', 'H2O'], ['CO2', 'H2O']]
-
-        # heat_reaction = [-4.6e4, -2.19e5, -8.12e6, -5.2e4]
-        # pre_exp_factors = [5.04e-3, 1.68e-2, 1.68e-2, 1.68e-2]
-        # act_energies = [5e3, 7.75e4, 1e5, 5.4e4]
-
-        # init_coeff = [[1, 'Oil2', 1.0], [1, 'Coke1', 1.0], [1, 'Gas', 3.3], 
-        #     [2, 'O2', 5.0], [2, 'CO2', 3.0], [2, 'H2O', 4.0], 
-        #     [3, 'O2', 18.0], [3, 'CO2', 12.0], [3, 'H2O', 12.0],
-        #     [4, 'O2', 1.25], [4, 'CO2', 1.0], [4, 'H2O', 0.5]]
 
     else: 
         raise Exception('Invalid reaction type entered.')
@@ -288,6 +178,12 @@ def set_reaction_defaults(parser, reaction_model):
 
 
 def get_component_props(opts):
+
+    # Load oil data
+    oil_data_path = os.path.join(opts.data_dir, opts.dataset, 'oil_data.json')
+    assert os.path.exists(oil_data_path), 'Please create a valid oil_data.json file in the dataset directory.'
+    with open(oil_data_path, 'rb') as fp:
+        oil_data = json.load(fp)
 
     # Store material properties in a dictionary of dictionaries
     opts.material_dict = {} 
@@ -344,9 +240,11 @@ def get_component_props(opts):
 
         # Molecular weights
         opts.material_dict['M'] = {'H2O': 1.8e-2, 'N2': 2.8e-2, 'O2': 3.2e-2, 'CO2': 4.4e-2, 'CO': 2.8e-2, 'Gas': 2.8e-2, # Product species
-                'Oil': 5.00e-1, 'Oil2': np.nan, 'Oil3': np.nan, 'Oil4': np.nan, 
+                'Oil': oil_data['MW'], 'Oil2': np.nan, 'Oil3': np.nan, 'Oil4': np.nan, 
                 'Coke1': np.nan, 'Coke2': np.nan, 'Coke3': np.nan, 'Coke4': np.nan # Pseudocomponents
                 }
+        
+        opts.material_dict['rho'] = {'Oil': oil_data['density']}
 
     return opts
 
