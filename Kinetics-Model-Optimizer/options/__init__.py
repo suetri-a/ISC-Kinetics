@@ -144,11 +144,11 @@ def set_reaction_defaults(parser, reaction_model):
         parser.set_defaults(reac_names='[[Oil,O2],[Coke1,O2],[Coke2,O2]]',
                             prod_names='[[Coke1],[CO,CO2,H2O,Coke2],[CO,CO2,H2O]]',
                             heat_reaction='[0,-4e4,-5e4]',
-                            pre_exp_factors='[1e-3,25,1]',
-                            act_energies='[3.5e4,7.3e4,8e4]',
+                            pre_exp_factors='[1e3,25,5e1]',
+                            act_energies='[6.8e4,3.5e4,8e4]',
                             rxn_constraints='[[2,CO2,CO,0.2],[3,CO2,CO,0.2]]',
-                            init_coeff=('[[1,O2,4.24],[2,O2,33.8],[2,CO2,23.77],[2,CO,4.75],[2,H2O,22],' 
-                                        '[3,O2,12.29],[3,CO2,8.56],[3,CO,1.75],[3,H2O,8]]'))
+                            init_coeff=('[[1,O2,2],[1,Coke1,4],[2,O2,1.6],[2,CO2,1.0],[2,CO,0.2],[2,H2O,1.0],[2,Coke2,2.0],' 
+                                        '[3,O2,0.4211],[3,CO2,0.2632],[3,CO,0.0526],[3,H2O,0.2632]]'))
 
 
     elif reaction_model == 'Crookston':

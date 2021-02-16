@@ -29,6 +29,10 @@ class OptimizationOptions(KineticCellOptions):
         parser.add_argument('--stoic_coeff_lower', type=float, default=1e-2, help='lower bound of stoichiometric coefficients')
         parser.add_argument('--stoic_coeff_upper', type=float, default=40.0, help='upper bound of stoichiometric coefficients')
 
+        # Uncertainty analysis options
+        parser.add_argument('--run_uncertainty', action='store_true', help='run MCMC sampling for parameters')
+        parser.add_argument('--run_sensitivity', action='store_true', help='run sobol sensitivity analysis')
+
         self.isOptimization = True
 
         return parser 

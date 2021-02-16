@@ -34,5 +34,9 @@ if __name__ == '__main__':
     optimizer.optimize_cell()
 
     # Run uncertainty analysis
-    optimizer.analyze_uncertainty()
+    if opts.run_uncertainty:
+        optimizer.analyze_uncertainty()
+    
+    # if opts.run_sensitivity:
+    #     optimizer.sobol_sensitivity()
 

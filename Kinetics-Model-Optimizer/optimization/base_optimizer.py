@@ -27,7 +27,7 @@ from scipy.stats import multivariate_normal
 from utils.utils import mkdirs, numerical_hessian
 
 from SALib.sample import saltelli
-from SALib.analyze import sobol
+from SALib.analyze import sobol, dgsm
 import emcee
 
 # Wrapper function for using joblib with optimizers and UQ frameworks
@@ -142,29 +142,29 @@ class BaseOptimizer(ABC):
 
             def output_loss(data_dict, y_dict):
                 Time = data_dict['Time']
-                N = Time.shape[0]
-                time_diffs = np.abs((np.expand_dims(Time, 0) - np.expand_dims(Time, 1)) / Time.max())
+                # N = Time.shape[0]
+                # time_diffs = np.abs((np.expand_dims(Time, 0) - np.expand_dims(Time, 1)) / Time.max())
                 
                 # O2 only case
                 if 'O2' in opts.output_loss_inputs and 'CO2' not in opts.output_loss_inputs:
                     x_data = data_dict['O2']
                     x_sim = np.interp(Time, y_dict['Time'], y_dict['O2'])
-                    M = opts.O2_sigma*np.exp(-np.power(time_diffs,2) / 2 / opts.O2_sigma**2) + opts.loss_sigma*np.eye(N)
+                    # M = opts.O2_sigma*np.exp(-np.power(time_diffs,2) / 2 / opts.O2_sigma**2) + opts.loss_sigma*np.eye(N)
 
                 # CO2 only case
                 elif 'O2' not in opts.output_loss_inputs and 'CO2' in opts.output_loss_inputs:
                     x_data = data_dict['CO2']
                     x_sim = np.interp(Time, y_dict['Time'], y_dict['CO2'])
-                    M = opts.O2_sigma*np.exp(-np.power(time_diffs,2) / 2 / opts.CO2_sigma**2) + opts.loss_sigma*np.eye(N)
+                    # M = opts.O2_sigma*np.exp(-np.power(time_diffs,2) / 2 / opts.CO2_sigma**2) + opts.loss_sigma*np.eye(N)
 
                 elif 'O2' in opts.output_loss_inputs and 'CO2' in opts.output_loss_inputs:
                     x_data = np.concatenate([data_dict['O2'], data_dict['CO2']])
                     x_sim = np.concatenate([np.interp(Time, y_dict['Time'],y_dict['O2']), np.interp(Time, y_dict['Time'],y_dict['CO2'])])
 
-                    A = opts.O2_sigma*np.exp(-np.power(time_diffs,2)/ 2 / opts.loss_sigma**2) 
-                    B = np.zeros_like(A)
-                    C = opts.CO2_sigma*np.exp(-np.power(time_diffs,2)/ 2 / opts.loss_sigma**2) 
-                    M = np.block([[A, B], [B, C]])
+                    # A = opts.O2_sigma*np.exp(-np.power(time_diffs,2)/ 2 / opts.loss_sigma**2) 
+                    # B = np.zeros_like(A)
+                    # C = opts.CO2_sigma*np.exp(-np.power(time_diffs,2)/ 2 / opts.loss_sigma**2) 
+                    # M = np.block([[A, B], [B, C]])
                                 
                 x = x_data - x_sim
                 loss = 0.5*np.sum(np.power(x,2))
@@ -391,6 +391,7 @@ class BaseOptimizer(ABC):
         x_opt = result.x
         x_out[preexp_inds] = np.log(5e4) 
         x_out[acteng_inds] = np.copy(x_opt)*np.ones_like(acteng_inds)
+        np.save(os.path.join(self.load_dir, 'warm_start_1.npy'), x_out)  # save stage 1 results
         
         # Plot and record stage 1 results
         plt.figure()
@@ -466,6 +467,7 @@ class BaseOptimizer(ABC):
                                         recombination=0.25)
         x_opt = result.x
         x_out = np.copy(x_opt)
+        np.save(os.path.join(self.load_dir, 'warm_start_2.npy'), x_out)  # save stage 2 results
 
         # Plot and record stage 2 results
         plt.figure()
@@ -529,6 +531,7 @@ class BaseOptimizer(ABC):
                                         maxiter=maxiter, 
                                         workers=joblib_map)
         x_out = np.copy(result.x)
+        np.save(os.path.join(self.load_dir, 'warm_start_3.npy'), x_out)  # save stage 3 results
 
         # Plot and record stage 3 results
         plt.figure()
@@ -657,7 +660,6 @@ class BaseOptimizer(ABC):
                     peak_inds_O2_data = np.delete(peak_inds_O2_data, np.where(peak_inds_O2_data < O2_data_start_ind)) # throw out early peaks
                     peak_inds_O2_data = np.delete(peak_inds_O2_data, np.where(peak_inds_O2_data > O2_data_end_ind)) # throw out late peaks
                     
-                    
                     peak_inds_O2_sim = np.sort(find_peaks_cwt(y_dict['O2'], np.arange(1,np.round(y_dict['O2'].shape[0]/6),step=1), noise_perc=2))
                     peak_inds_O2_sim = np.delete(peak_inds_O2_sim, np.where(peak_inds_O2_sim < O2_sim_start_ind))
                     peak_inds_O2_sim = np.delete(peak_inds_O2_sim, np.where(peak_inds_O2_sim > O2_sim_end_ind))
@@ -777,85 +779,147 @@ class BaseOptimizer(ABC):
         if not os.path.exists(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis')):
             os.mkdir(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis'))
 
-        ###### MCMC CONFIDENCE INTERVALS
+        ###### MCMC SAMPLING
         os.environ["OMP_NUM_THREADS"] = "1"
-        initial = np.expand_dims(self.sol,0) + 5e-2*np.random.randn(8*len(self.kinetic_cell.param_types), len(self.kinetic_cell.param_types))
-        nwalkers, ndim = initial.shape
-        nsteps = 10
 
-        def log_prob(x):
-            if np.any(np.greater(np.abs(self.kinetic_cell.compute_residuals(x).flatten()), 1e-3)):
-                out = np.inf
-            else:
-                out = self.base_cost(x)
-            print('call log prob')
-            return out
+        if os.path.exists(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples.npy')) and \
+                os.path.exists(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'Y.npy')):
+            samples = np.load(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples.npy'))
+            Y = np.load(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'Y.npy'))
+            print('Samples loaded successfully!')
 
-        # with Pool() as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob)
-        sampler.run_mcmc(initial, nsteps)
+        else:
+            print('No existing samples found. Running MCMC sampling procedure...')
+
+            # load computed bounds
+            with open(os.path.join(self.load_dir, 'warm_start_bounds.pkl'), 'rb') as fp:
+                bnds = pickle.load(fp)
+            lb = np.array([b[0] for b in bnds])
+            ub = np.array([b[1] for b in bnds])
+
+            # MCMC Parameters
+            SIM_BUDGET = 3000
+            burn_in = 25
+            nsteps = 50
+            # burn_in = 1  # for debugging
+            # nsteps = 5
+
+            # Calculate 
+            W = int(np.maximum(SIM_BUDGET/(burn_in + nsteps), 2*len(self.kinetic_cell.param_types)))
+            # W = 4 * len(self.kinetic_cell.param_types)  # for debugging
+
+            # Initialize population and log probability w/ barrier 
+            initial = np.expand_dims(self.sol,0) + 1e-3*np.random.randn(W, len(self.kinetic_cell.param_types))
+            initial = np.maximum(np.minimum(initial, ub), lb)  # constrict to boundaries
+            nwalkers, ndim = initial.shape
+
+            def log_prob(x):
+                if np.any(np.less(x, lb)) or np.any(np.greater(x, ub)):  # check bounds
+                    out = -np.inf
+                elif np.any(np.greater(np.abs(self.kinetic_cell.compute_residuals(x).flatten()), 1e-3)):  # non-physical mapping
+                    out = -np.inf
+                else:
+                    out = -1*self.base_cost(x, nofig=True)
+                
+                return out
+
+            # Run sampling
+            with Pool() as pool:
+                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, pool=pool)
+                sampler.run_mcmc(initial, nsteps + burn_in, progress=True)
+            
+            # Save results from sampling
+            print('Saving results from sampling...')
+            samples = sampler.get_chain(flat=True, discard=burn_in)
+            Y = sampler.get_log_prob(flat=True, discard=burn_in)
+
+            np.save(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples.npy'), samples)
+            np.save(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'Y.npy'), Y)
 
 
-        ###### SENSITIVITY ANALYSIS
-        param_names = []
-        bnds = []
-        for i, p in enumerate(self.kinetic_cell.param_types):
-            if p[0] == 'preexp':
-                param_names.append('A rxn {}'.format(str(p[1]+1)))
-                bnds.append([self.sol[i]-0.1, self.sol[i]+0.1])
-            elif p[0] == 'acteng':
-                param_names.append('Ea rxn {}'.format(str(p[1]+1)))
-                bnds.append([self.sol[i]-0.1, self.sol[i]+0.1])
-            elif p[0] == 'stoic':
-                param_names.append('{} rxn {}'.format(p[2], str(p[1]+1)))
-                bnds.append([np.maximum(self.sol[i]-0.5,0.01), np.minimum(self.sol[i]+0.5,40.0)])
+        # ###### DGSM SENSITIVITY ANALYSIS
+        # print('Running sensitivity analysis...')
+        # param_names = []
+        # bnds = []
+        # for i, p in enumerate(self.kinetic_cell.param_types):
+        #     if p[0] == 'preexp':
+        #         param_names.append('A rxn {}'.format(str(p[1]+1)))
+        #         bnds.append([self.sol[i]-1e0, self.sol[i]+1e0])
+        #     elif p[0] == 'acteng':
+        #         param_names.append('Ea rxn {}'.format(str(p[1]+1)))
+        #         bnds.append([self.sol[i]-1e0, self.sol[i]+1e0])
+        #     elif p[0] == 'stoic':
+        #         param_names.append('{} rxn {}'.format(p[2], str(p[1]+1)))
+        #         bnds.append([np.maximum(self.sol[i]-0.5, 1e-3), np.minimum(self.sol[i]+0.5,100.0)])
 
-        problem = {
-            'num_vars': len(self.kinetic_cell.param_types),
-            'names': param_names,
-            'bounds': bnds
-        }
+        # problem = {
+        #     'num_vars': len(self.kinetic_cell.param_types),
+        #     'names': param_names,
+        #     'bounds': bnds
+        # }
 
-        # if os.path.exists(os.path.join(self.load_dir, 'sensitivity_responses.npy')):
-        #     param_values = np.load(os.path.join(self.load_dir, 'sensitivity_inputs.npy'))
-        #     Y = np.load(os.path.join(self.load_dir, 'sensitivity_responses.npy'))
+        # # Throw out nan and inf values
+        # if np.any(np.isnan(Y)) or np.any(np.isinf(Y)):
+        #     Y, samples = Y[~np.isnan(Y)], samples[np.where(~np.isnan(Y)),:]
+        #     Y, samples = Y[~np.isinf(Y)], samples[np.where(~np.isinf(Y)),:]
+
+        # # Adjust dimension of samples
+        # D = len(self.kinetic_cell.param_types)
+        # if Y.shape[0] % (D+1) != 0:        
+        #     ind_remainder = Y.shape[0] % (D+1)
+        #     Y = Y[:-ind_remainder]
+        #     samples = samples[:-ind_remainder]
+
+        # # Run sensitivity analysis and savel
+        # print('Sensitivity analysis results:')
+        # Si = dgsm.analyze(problem, samples, Y, print_to_console=True)
         
+        # with open(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'si_problem.pkl'), 'wb') as f:
+        #     pickle.dump(problem, f)
+        # with open(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'si.pkl'), 'wb') as f:
+        #     pickle.dump(Si, f)
+
+        # # Create tornado plot of metrics
+        # plt.rcdefaults()
+        # fig, ax = plt.subplots()
+        # ax.barh(np.arange(len(problem['names'])), Si['dgsm'], xerr=Si['dgsm_conf'], align='center')
+        # ax.set_yticks(np.arange(len(problem['names'])))
+        # ax.set_yticklabels(problem['names'])
+        # ax.invert_yaxis() 
+        # ax.set_xlabel('Sensitivity')
+        # ax.tick_params(labelsize=8)
+        # ax.set_title('Sensitivity plot of variables')
+
+        # fig.savefig(os.path.join(self.kinetic_cell.results_dir,'sensitivity_plot.png'))
+
+
+    def sensitivity_analysis(self):
+        '''
+        Compute Sobol sensitivity indices for parameters
+
+        '''
+        pass
+
+        # print("Running Sobol sensitivity analysis...")
+
+        # if os.path.exists(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples.npy')) and \
+        #         os.path.exists(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'Y.npy')):
+        #     samples = np.load(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples.npy'))
+        #     Y = np.load(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'Y.npy'))
+        #     print('MCMC samples loaded successfully!')
         # else:
-        #     param_values = saltelli.sample(problem, 500)
-        #     Y = np.zeros([param_values.shape[0]])
+        #     raise Exception("No MCMC samples detected. ")
 
-        #     for i, X in enumerate(param_values):
-        #         Y[i] = self.base_cost(np.array(X))
 
-        #     np.save(os.path.join(self.load_dir, 'sensitivity_inputs.npy'), param_values)
-        #     np.save(os.path.join(self.load_dir, 'sensitivity_responses.npy'), Y)
-
-        Si = sobol.analyze(problem, Y, parallel=True, n_processors=4)
-
-        pickle.dump(problem, os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'si_problem.pkl'))
-        pickle.dump(Si, os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'si.pkl'))
-
-        # Create tornado plot
-        sort_inds = sorted(range(len(problem['names'])), key=Si['ST'].__getitem__, reverse=True)
-
-        plt.rcdefaults()
-        fig, ax = plt.subplots()
-
-        # Example data
-        variables = [problem['names'][i] for i in sort_inds]
-        y_pos = np.arange(len(variables))
-        sensitivity = [Si['ST'][i] for i in sort_inds]
-        error = [Si['ST_conf'][i] for i in sort_inds]
-
-        ax.barh(y_pos, sensitivity, xerr=error, align='center')
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(variables)
-        ax.invert_yaxis()  # labels read top-to-bottom
-        ax.set_xlabel('Sensitivity')
-        ax.tick_params(labelsize=8)
-        ax.set_title('Sensitivity plot of variables')
-
-        fig.savefig(os.path.join(self.kinetic_cell.results_dir,'sensitivity_plot.png'))
+        # def log_prob(x):
+        #     if np.any(np.less(x, lb)) or np.any(np.greater(x, ub)):  # check bounds
+        #         out = -np.inf
+        #     elif np.any(np.greater(np.abs(self.kinetic_cell.compute_residuals(x).flatten()), 1e-3)):  # non-physical mapping
+        #         out = -np.inf
+        #     else:
+        #         out = -1*self.base_cost(x, nofig=True)
+            
+        #     return out
 
 
     @staticmethod

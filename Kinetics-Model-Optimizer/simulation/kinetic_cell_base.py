@@ -1,4 +1,4 @@
-import autograd.numpy as np
+import numpy as np
 from abc import ABC, abstractmethod
 import argparse
 import os, sys, pickle
@@ -49,16 +49,17 @@ class KineticCellBase(ABC):
         self.fuel_inds = [self.comp_names.index(r) for names in opts.reac_names for r in names if r in opts.fuel_comps or r in opts.pseudo_fuel_comps]
 
         # Parameter bounds dictionary
-        self.lb = {'reaccoeff': opts.stoic_coeff_lower, 'prodcoeff': opts.stoic_coeff_lower, 
-                    'reacorder': opts.rxn_order_lower, 'prodorder': opts.rxn_order_lower,
-                    'preexpfwd': opts.pre_exp_lower, 'preexprev': opts.pre_exp_lower,
-                    'actengfwd': opts.act_eng_lower, 'actengrev': opts.act_eng_lower, 
-                    'balance-M': 0, 'balance-O': 0, 'balance-C': 0}
-        self.ub = {'reaccoeff': opts.stoic_coeff_upper, 'prodcoeff': opts.stoic_coeff_upper, 
-                    'reacorder': opts.rxn_order_upper, 'prodorder': opts.rxn_order_upper,
-                    'preexpfwd': opts.pre_exp_upper, 'preexprev': opts.pre_exp_upper,
-                    'actengfwd': opts.act_eng_upper, 'actengrev': opts.act_eng_upper, 
-                    'balance-M': np.inf, 'balance-O': np.inf, 'balance-C': np.inf}
+        if opts.isOptimization:
+            self.lb = {'reaccoeff': opts.stoic_coeff_lower, 'prodcoeff': opts.stoic_coeff_lower, 
+                        'reacorder': opts.rxn_order_lower, 'prodorder': opts.rxn_order_lower,
+                        'preexpfwd': opts.pre_exp_lower, 'preexprev': opts.pre_exp_lower,
+                        'actengfwd': opts.act_eng_lower, 'actengrev': opts.act_eng_lower, 
+                        'balance-M': 0, 'balance-O': 0, 'balance-C': 0}
+            self.ub = {'reaccoeff': opts.stoic_coeff_upper, 'prodcoeff': opts.stoic_coeff_upper, 
+                        'reacorder': opts.rxn_order_upper, 'prodorder': opts.rxn_order_upper,
+                        'preexpfwd': opts.pre_exp_upper, 'preexprev': opts.pre_exp_upper,
+                        'actengfwd': opts.act_eng_upper, 'actengrev': opts.act_eng_upper, 
+                        'balance-M': np.inf, 'balance-O': np.inf, 'balance-C': np.inf}
 
         if opts.load_from_saved:
             with open(os.path.join(self.results_dir,'load_dir','param_types.pkl'), 'rb') as fp:
@@ -254,8 +255,8 @@ class KineticCellBase(ABC):
 
     def save_plots(self, Time, Temp, O2, O2_filename = 'O2_data.png', temp_filename = 'temperature_data.png'):
         O2_fig, temp_fig = self.plot_data(Time, Temp, O2)
-        O2_fig.savefig(O2_filename)
-        temp_fig.savefig(temp_filename)
+        O2_fig.savefig(self.results_dir + O2_filename)
+        temp_fig.savefig(self.results_dir + temp_filename)
 
 
     def show_plots(self, Time, Temp, O2):
