@@ -10,7 +10,7 @@ from simulation import create_kinetic_cell
 from data import create_data_cell
 from optimization import create_optimizer
 
-from build_convergence_figures import get_model_losses
+from build_convergence_figures import get_model_losses, write_tex_file
 
 def parse_params(name):
     '''
@@ -119,7 +119,8 @@ if __name__ == '__main__':
     plt.xlabel('Time')
     plt.ylabel(r'$O_2$ Consumption [% mol]')
     plt.legend(loc='upper left', bbox_to_anchor=(0.8, 0.97), framealpha=1.0)
-    tikz.save(os.path.join('figures', 'warm_start', 'stage1.tex'))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join('figures', 'warm_start', 'stage1.tex'))
     plt.savefig(os.path.join('figures', 'warm_start', 'stage1.png'))
 
 
@@ -216,7 +217,8 @@ if __name__ == '__main__':
     plt.xlabel('Time')
     plt.ylabel(r'$O_2$ Consumption [% mol]')
     plt.legend(loc='upper left', bbox_to_anchor=(0.9, 0.97), framealpha=1.0)
-    tikz.save(os.path.join('figures', 'warm_start', 'stage2.tex'))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join('figures', 'warm_start', 'stage2.tex'))
     plt.savefig(os.path.join('figures', 'warm_start', 'stage2.png'))
     
 
@@ -270,5 +272,6 @@ if __name__ == '__main__':
     plt.xlabel('Time')
     plt.ylabel(r'$O_2$ Consumption [% mol]')
     plt.legend(loc='upper left', bbox_to_anchor=(0.7, 0.97), framealpha=1.0)
-    tikz.save(os.path.join('figures', 'warm_start', 'stage3.tex'))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join('figures', 'warm_start', 'stage3.tex'))
     plt.savefig(os.path.join('figures', 'warm_start', 'stage3.png'))

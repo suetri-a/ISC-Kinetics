@@ -72,10 +72,10 @@ if __name__ == '__main__':
 
         # Save data
         df_out = pd.DataFrame()
-        df_out['Time'] = y_dict['Time']
-        df_out['O2'] = y_dict['O2']
-        df_out['CO2'] = y_dict['CO2']
-        df_out['Temp'] = y_dict['Temp']
+        df_out['Time'] = 60*y_dict['Time']  # convert time to seconds
+        df_out['O2'] = 100*(IC['O2'] - y_dict['O2'])  # convert back to %mol O2
+        df_out['CO2'] = 100*y_dict['CO2']  # convert to %mol
+        df_out['Temperature'] = y_dict['Temp']
         df_out.to_excel(os.path.join(kinetic_cell.results_dir, '{}C_min.xls'.format(hr)))
 
     plt.xlabel('Time [min]')

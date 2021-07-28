@@ -26,9 +26,14 @@ def load_rto_data(data_path, clean_data = True, return_O2_con_in = False):
     
     ind100C = np.amin(np.asarray(Temp > 100).nonzero())
     ind120C = np.amin(np.asarray(Temp > 120).nonzero())
-    inds750 = np.asarray(Temp > 745).nonzero()[0]
-    ind750C1 = inds750[np.round(0.75*inds750.shape[0]).astype(int)]
-    ind750C2 = inds750[np.round(0.9*inds750.shape[0]).astype(int)]
+    T_max = np.amax(Temp)
+    inds750 = np.asarray(Temp > T_max - 5).nonzero()[0]
+    if inds750.shape[0] < 10:
+        ind750C1 = Temp.shape[0]-3
+        ind750C2 = Temp.shape[0]-2
+    else:
+        ind750C1 = inds750[np.round(0.75*inds750.shape[0]).astype(int)]
+        ind750C2 = inds750[np.round(0.9*inds750.shape[0]).astype(int)]
 
 
     # Gather datapoints and perform linear regression correction
@@ -41,24 +46,22 @@ def load_rto_data(data_path, clean_data = True, return_O2_con_in = False):
 
     # Calculate %O2 consumption and conversion
     O2_consumption = np.maximum(O2_baseline - O2, 0)
-    
+
     start_ind_max, end_ind_max_O2 = find_start_end(O2_consumption)
     O2_consumption[:start_ind_max] = 0
     O2_consumption[end_ind_max_O2:] = 0
-    
 
-    # Process CO2 data
+    # correct O2s
     correction_CO2s = np.concatenate([CO2[ind100C:ind120C+1], CO2[ind750C1:ind750C2+1]])
     slope, intercept, _, _, _ = linregress(correction_times, correction_CO2s)
     CO2_baseline = slope*Time + intercept
     CO2_production = np.maximum(CO2 - CO2_baseline, 0)
-    
+
     start_ind_max, end_ind_max_CO2 = find_start_end(CO2_production)
     CO2_production[:start_ind_max] = 0
     CO2_production[end_ind_max_CO2:] = 0 
 
-    
-    # Preliminary correction
+    # remove final times
     global_max_ind = max(end_ind_max_O2, end_ind_max_CO2)
     Time = Time[:global_max_ind]
     Temp = Temp[:global_max_ind]

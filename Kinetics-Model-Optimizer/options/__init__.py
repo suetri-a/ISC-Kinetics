@@ -18,12 +18,12 @@ def set_reaction_defaults(parser, reaction_model):
         parser.set_defaults(reac_names='[[Oil,O2],[Coke1,O2],[Coke1],[Coke2,O2],[Coke1],[Coke3,O2]]',
                             prod_names='[[Coke1,H2O],[CO,CO2,H2O],[Coke2],[CO,CO2,H2O],[Coke3],[CO,CO2]]',
                             heat_reaction='[0,-1e4,0,-2e4,0,-5e4]',
-                            pre_exp_factors='[1e1,1e1,1e-1,1e-1,1e-3,1e-3]',
-                            act_energies='[1e5,5e4,6e4,8e4,8e4,1e5]',
+                            pre_exp_factors='[1e3,2e2,1e3,5e3,1e3,5e3]',
+                            act_energies='[5e4,4e4,3e4,8e4,3e4,8e4]',
                             rxn_constraints='[[2,CO2,CO,0.2],[4,CO2,CO,0.2]]', #'[[2,O2,CO2,0.5],[2,O2,CO,0.21],[4,O2,CO2,0.87],[4,O2,CO,0.286]]',
-                            init_coeff=('[[1,O2,30],[1,Coke1,10],[1,H2O,2],[2,O2,5],[2,CO,0.3181],[2,CO2,0.75],[2,H2O,1.3815],'
-                                        '[3,Coke2,1.3824],[4,O2,0.65],[4,CO,0.1862],[4,CO2,0.5652],[4,H2O,0.2393],'
-                                        '[5,Coke3,0.9135],[6,O2,0.9],[6,CO,0.2]]'))
+                            init_coeff=('[[1,O2,6],[1,Coke1,3],[1,H2O,3],[2,O2,11.38],[2,CO,0.3181],[2,CO2,8.05],[2,H2O,8.05],'
+                                        '[3,Coke2,2],[4,O2,5.69],[4,CO,0.1862],[4,CO2,5.69],[4,H2O,5.69],'
+                                        '[5,Coke3,4],[6,O2,1.92],[6,CO2,1.83],[6,CO,0.915]]'))
     
 
     elif reaction_model == 'CinarMod1':
@@ -120,15 +120,14 @@ def set_reaction_defaults(parser, reaction_model):
     elif reaction_model == 'Dechelette1':
         '''
         (1)       Oil   + O2 -> Coke1
-        (2)       Coke1 + O2 -> CO2 + H2O
+        (2)       Coke1 + O2 -> CO2 + CO + H2O
         
         '''
         parser.set_defaults(reac_names='[[Oil,O2],[Coke1,O2]]',
-                            prod_names='[[Coke1,CO2],[CO2,H2O]]',
+                            prod_names='[[Coke1],[CO2,CO,H2O]]',
                             heat_reaction='[-1e4,-4e4]',
                             pre_exp_factors='[1e-1,1e-2]',
                             act_energies='[5e4,9e4]',
-                            rxn_constraints='[[2,O2,CO2,1]]',
                             init_coeff='[[1,O2,10],[2,O2,4],[2,CO2,4],[2,H2O,8]]')
 
 
@@ -144,8 +143,8 @@ def set_reaction_defaults(parser, reaction_model):
         parser.set_defaults(reac_names='[[Oil,O2],[Coke1,O2],[Coke2,O2]]',
                             prod_names='[[Coke1],[CO,CO2,H2O,Coke2],[CO,CO2,H2O]]',
                             heat_reaction='[0,-4e4,-5e4]',
-                            pre_exp_factors='[1e3,25,5e1]',
-                            act_energies='[6.8e4,3.5e4,8e4]',
+                            pre_exp_factors='[2e3,1e1,4e3]',
+                            act_energies='[5.5e4,3.5e4,8e4]',
                             rxn_constraints='[[2,CO2,CO,0.2],[3,CO2,CO,0.2]]',
                             init_coeff=('[[1,O2,2],[1,Coke1,4],[2,O2,1.6],[2,CO2,1.0],[2,CO,0.2],[2,H2O,1.0],[2,Coke2,2.0],' 
                                         '[3,O2,0.4211],[3,CO2,0.2632],[3,CO,0.0526],[3,H2O,0.2632]]'))

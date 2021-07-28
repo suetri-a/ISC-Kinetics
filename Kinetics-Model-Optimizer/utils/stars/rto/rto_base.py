@@ -221,7 +221,7 @@ class RtoBase(ABC):
                 self.COMP['TEMPL'] = [str(FID[i+j].split()[2]) for j in range(self.COMP['NUM'])]
                 i+=self.COMP['NUM']
 
-            elif line_split[0] == 'TIME' and 'SPEC-HISTORY' in [FID[i-1].split()[0], FID[i-3].split()[0]]:
+            elif line_split[0] == 'TIME' and 'SPEC-HISTORY' in [FID[i-1].split()[0], FID[i-2].split()[0], FID[i-3].split()[0]]:
                 self.TIME['VECT'].append(line_split[1:])
                 i+=1
 

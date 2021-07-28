@@ -125,10 +125,15 @@ def isoconversional_analysis(heating_data, corrected=True):
             O2_temps = [np.interp(conv, O2_conv_dict[hr], -1/heating_data[hr]['Temp']/R) for hr in sorted(heating_data.keys())]
             dO2_convs = [np.interp(conv, O2_conv_dict[hr], np.log(heating_data[hr]['O2'])) for hr in sorted(heating_data.keys())]
 
-            model.fit(np.column_stack((O2_temps, np.log(conv)*np.ones_like(O2_temps))), dO2_convs)
-            O2_eact.append(model.coef_[0])
-            O2_rorder.append(model.coef_[1])
-            O2_preexp.append(model.intercept_)
+            try:
+                model.fit(np.column_stack((O2_temps, np.log(conv)*np.ones_like(O2_temps))), dO2_convs)
+                O2_eact.append(model.coef_[0])
+                O2_rorder.append(model.coef_[1])
+                O2_preexp.append(model.intercept_)
+            except:
+                O2_eact.append(np.nan)
+                O2_rorder.append(np.nan)
+                O2_preexp.append(np.nan)
 
     
     return conv_grid, O2_eact, O2_rorder, O2_preexp

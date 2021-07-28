@@ -26,6 +26,22 @@ def find_optim_stage(line):
     return optim_stage
 
 
+def write_tex_file(tikz_code, fname, tiny_text = False):
+    
+    # Fix legend font size
+    if tiny_text:
+        ind = tikz_code.find('tick align') - 3
+        tikz_code = tikz_code[:ind] + ', font=\\footnotesize' + tikz_code[ind:]
+
+    print('''\\documentclass[crop,tikz]{{standalone}}
+    \\usepackage{{pgfplots}}
+    \\begin{{document}}
+
+     {}
+
+     \\end{{document}}'''.format(tikz_code), file = open(fname, 'w'))
+
+
 def get_model_losses(model_name):
     '''
     Parse optimization log file to produce list of parameters and loss
@@ -94,7 +110,8 @@ if __name__ == '__main__':
     plt.xlabel('Iterations')
     plt.ylabel(r'Peak-matching cost $C(E_a)$')
     # plt.ylim((1e-3, 1e0))
-    tikz.save(os.path.join(fig_dir, 'stage1.tex'))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join(fig_dir, 'stage1.tex'))
     plt.savefig(os.path.join(fig_dir, 'stage1.png'))
 
     # Warm start stage 2
@@ -104,7 +121,8 @@ if __name__ == '__main__':
                 loss_dict['ws2'][loss_dict['ws2']<1e6])
     plt.xlabel('Iterations')
     plt.ylabel(r'Start-peaks-end cost $C(\theta)$')
-    tikz.save(os.path.join(fig_dir, 'stage2.tex'))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join(fig_dir, 'stage2.tex'))
     plt.savefig(os.path.join(fig_dir, 'stage2.png'))
 
 
@@ -115,8 +133,9 @@ if __name__ == '__main__':
                 loss_dict['ws3'][loss_dict['ws3']<1e6])
     plt.xlabel('Iterations')
     plt.ylabel(r'Loss value $C(\theta)$')
-    plt.ylim((1e-8, 1e-4))
-    tikz.save(os.path.join(fig_dir, 'stage3.tex'))
+    plt.ylim((1e-7, 1e-2))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join(fig_dir, 'stage3.tex'))
     plt.savefig(os.path.join(fig_dir, 'stage3.png'))
 
 
@@ -127,6 +146,7 @@ if __name__ == '__main__':
                 loss_dict['optim'][loss_dict['optim']<1e6])
     plt.xlabel('Iterations')
     plt.ylabel(r'Loss value $\ell(\theta)$')
-    plt.ylim((1e-3, 1e-1))
-    tikz.save(os.path.join(fig_dir, 'optim.tex'))
+    plt.ylim((1e-2, 1e0))
+    tikz_code = tikz.get_tikz_code()
+    write_tex_file(tikz_code, os.path.join(fig_dir, 'optim.tex'))
     plt.savefig(os.path.join(fig_dir, 'optim.png'))

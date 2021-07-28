@@ -798,18 +798,16 @@ class BaseOptimizer(ABC):
             ub = np.array([b[1] for b in bnds])
 
             # MCMC Parameters
-            SIM_BUDGET = 3000
-            burn_in = 25
-            nsteps = 50
+            burn_in = 0
+            nsteps = 1000
             # burn_in = 1  # for debugging
             # nsteps = 5
 
             # Calculate 
-            W = int(np.maximum(SIM_BUDGET/(burn_in + nsteps), 2*len(self.kinetic_cell.param_types)))
-            # W = 4 * len(self.kinetic_cell.param_types)  # for debugging
+            W = 4*len(self.kinetic_cell.param_types)
 
             # Initialize population and log probability w/ barrier 
-            initial = np.expand_dims(self.sol,0) + 1e-3*np.random.randn(W, len(self.kinetic_cell.param_types))
+            initial = np.expand_dims(self.sol, 0) + 5e-4*np.random.randn(W, len(self.kinetic_cell.param_types))
             initial = np.maximum(np.minimum(initial, ub), lb)  # constrict to boundaries
             nwalkers, ndim = initial.shape
 
@@ -819,20 +817,27 @@ class BaseOptimizer(ABC):
                 elif np.any(np.greater(np.abs(self.kinetic_cell.compute_residuals(x).flatten()), 1e-3)):  # non-physical mapping
                     out = -np.inf
                 else:
-                    out = -1*self.base_cost(x, nofig=True)
+                    out = -1e4*self.base_cost(x, nofig=True)  # multiply by noise parameter
                 
                 return out
 
             # Run sampling
+            samples_log_name = os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples_log.h5')
+            backend = emcee.backends.HDFBackend(samples_log_name)
+            backend.reset(nwalkers, ndim)
+
             with Pool() as pool:
-                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, pool=pool)
+                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, pool=pool, backend=backend)
                 sampler.run_mcmc(initial, nsteps + burn_in, progress=True)
             
             # Save results from sampling
             print('Saving results from sampling...')
-            samples = sampler.get_chain(flat=True, discard=burn_in)
-            Y = sampler.get_log_prob(flat=True, discard=burn_in)
 
+            tau = sampler.get_autocorr_time(tol=0)
+            samples = sampler.get_chain(flat=True)
+            Y = sampler.get_log_prob(flat=True)
+
+            np.save(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'tau.npy'), tau)
             np.save(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'samples.npy'), samples)
             np.save(os.path.join(self.kinetic_cell.results_dir, 'uncertainty_analysis', 'Y.npy'), Y)
 
